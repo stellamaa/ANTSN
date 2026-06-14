@@ -59,6 +59,50 @@ export function loadYouTubeAPI() {
   return apiReadyPromise
 }
 
+export async function resolveYouTubeAudioUrl(videoId) {
+  const response = await fetch(
+    `/api/youtube-audio?videoId=${encodeURIComponent(videoId)}`,
+  )
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.error || 'YouTube audio unavailable on mobile')
+  }
+  return data.url
+}
+
+export function createYouTubeAudioPlayer(audioUrl, volume = 0.7, callbacks = {}) {
+  const audio = new Audio()
+  audio.preload = 'auto'
+  audio.src = audioUrl
+  audio.volume = volume
+
+  audio.addEventListener('play', () => callbacks.onPlay?.())
+  audio.addEventListener('pause', () => callbacks.onPause?.())
+  audio.addEventListener('ended', () => callbacks.onEnded?.())
+
+  return {
+    type: 'youtube-audio',
+    setVolume: (v) => {
+      audio.volume = v
+    },
+    play: async () => {
+      await audio.play()
+    },
+    pause: () => audio.pause(),
+    resume: async () => {
+      await audio.play()
+    },
+    getCurrentTime: () => audio.currentTime,
+    getDuration: () => audio.duration || 0,
+    isPlaying: () => !audio.paused && !audio.ended,
+    destroy: () => {
+      audio.pause()
+      audio.removeAttribute('src')
+      audio.load()
+    },
+  }
+}
+
 export function createYouTubePlayer(containerId, videoId, { volume = 70, onStateChange, onReady } = {}) {
   return new window.YT.Player(containerId, {
     height: '200',

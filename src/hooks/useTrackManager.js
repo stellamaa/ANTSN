@@ -7,11 +7,14 @@ import {
   playSpotifyFull,
 } from '../services/spotify/playback'
 import {
+  createYouTubeAudioPlayer,
   createYouTubePlayer,
   loadYouTubeAPI,
+  resolveYouTubeAudioUrl,
   searchYouTube,
   YT_STATE,
 } from '../services/youtube'
+import { prefersYouTubeAudioMix } from '../utils/device'
 import { fadeVolume } from '../utils/fade'
 import { MAX_TRACKS } from '../utils/helpers'
 import { normalizeActions, normalizeVolume } from '../utils/volume'
@@ -56,6 +59,10 @@ export function useTrackManager({ spotify }) {
   }, [tracks])
 
   useEffect(() => {
+    if (prefersYouTubeAudioMix()) {
+      setApiReady(true)
+      return
+    }
     loadYouTubeAPI().then(() => setApiReady(true))
   }, [])
 
@@ -103,10 +110,37 @@ export function useTrackManager({ spotify }) {
 
   const attachYouTube = useCallback(
     async (slotId, video, volume = 0.7) => {
-      if (!apiReady) throw new Error('YouTube API not ready')
-
       const slot = tracksRef.current.find((t) => t.id === slotId)
       if (isSlotActive(slot)) destroyPlayer(slot)
+
+      if (prefersYouTubeAudioMix()) {
+        const audioUrl = await resolveYouTubeAudioUrl(video.videoId)
+        const adapter = createYouTubeAudioPlayer(audioUrl, volume, {
+          onPlay: () => updateTrack(slotId, { playing: true }),
+          onPause: () => updateTrack(slotId, { playing: false }),
+          onEnded: () => updateTrack(slotId, { playing: false }),
+        })
+
+        playersRef.current[slotId] = adapter
+        await adapter.play()
+
+        updateTrack(slotId, {
+          source: 'youtube',
+          mediaId: video.videoId,
+          title: video.title,
+          channel: video.channel,
+          artist: null,
+          playing: true,
+          volume,
+          playbackMode: 'audio',
+          previewUrl: null,
+          player: null,
+        })
+
+        return adapter
+      }
+
+      if (!apiReady) throw new Error('YouTube API not ready')
 
       return new Promise((resolve, reject) => {
         let settled = false

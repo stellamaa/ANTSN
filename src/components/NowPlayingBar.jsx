@@ -23,7 +23,9 @@ function TrackItem({ track, onToggle, onVolumeChange }) {
       ? track.playbackMode === 'preview'
         ? 'sp·'
         : 'sp'
-      : 'yt'
+      : track.playbackMode === 'audio'
+        ? 'yt~'
+        : 'yt'
 
   const trackNumber = track.id + 1
 
