@@ -7,8 +7,10 @@ function youtubeAudioDevPlugin() {
     name: 'youtube-audio-dev',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        const isResolve = req.url?.startsWith('/api/youtube-audio/resolve')
-        const isStream = req.url?.startsWith('/api/youtube-audio')
+        const isResolve = req.url?.startsWith('/api/youtube-audio-resolve')
+        const isStream =
+          req.url?.startsWith('/api/youtube-audio') &&
+          !req.url?.startsWith('/api/youtube-audio-resolve')
         if (!isResolve && !isStream) return next()
 
         const url = new URL(req.url, 'http://127.0.0.1')

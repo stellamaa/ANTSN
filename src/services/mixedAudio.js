@@ -46,10 +46,10 @@ function createMediaElement(useVideo) {
 
 async function resolveYouTubeStream(videoId) {
   const params = new URLSearchParams({ videoId, mobile: '1' })
-  const response = await fetch(`/api/youtube-audio/resolve?${params}`)
+  const response = await fetch(`/api/youtube-audio-resolve?${params}`)
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
-    throw new Error(data.error || 'Could not resolve YouTube stream')
+    throw new Error(data.error || `Could not resolve YouTube stream (${response.status})`)
   }
   return data
 }
