@@ -6,6 +6,10 @@ import {
 } from './audioMixer'
 import { prefersYouTubeAudioMix } from '../utils/device'
 
+function isMediaUrl(source) {
+  return source.startsWith('http') || source.startsWith('/')
+}
+
 function getMediaHost() {
   let host = document.getElementById('antsn-media-host')
   if (!host) {
@@ -40,25 +44,37 @@ function createMediaElement(useVideo) {
   return audio
 }
 
-async function probeStream(url) {
-  const response = await fetch(url, {
-    headers: { Range: 'bytes=0-1023' },
-  })
-  const contentType = response.headers.get('content-type') || ''
+async function resolveYouTubeStream(videoId) {
+  const params = new URLSearchParams({ videoId, mobile: '1' })
+  const response = await fetch(`/api/youtube-audio/resolve?${params}`)
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.error || 'Could not resolve YouTube stream')
+  }
+  return data
+}
 
-  if (contentType.includes('json') || !response.ok) {
-    let message = `stream unavailable (${response.status})`
-    try {
-      const body = await response.text()
-      const parsed = JSON.parse(body)
-      if (parsed.error) message = parsed.error
-    } catch {
-      /* ignore parse errors */
+async function resolveStreamSource(source) {
+  if (isMediaUrl(source)) {
+    return {
+      url: source,
+      contentType: null,
+      direct: source.startsWith('http'),
+      proxyUrl: null,
     }
-    throw new Error(message)
   }
 
-  return contentType
+  if (prefersYouTubeAudioMix()) {
+    return resolveYouTubeStream(source)
+  }
+
+  const params = new URLSearchParams({ videoId: source })
+  return {
+    url: `/api/youtube-audio?${params}`,
+    contentType: null,
+    direct: false,
+    proxyUrl: null,
+  }
 }
 
 function waitForMediaReady(media, timeoutMs) {
@@ -108,7 +124,7 @@ function waitForMediaReady(media, timeoutMs) {
 }
 
 export function createMixedAudioPlayer(
-  audioUrl,
+  source,
   slotId,
   volume = 0.7,
   callbacks = {},
@@ -116,6 +132,17 @@ export function createMixedAudioPlayer(
 ) {
   let media = null
   let usesMixer = false
+
+  const destroyMedia = () => {
+    detachFromMixer(slotId)
+    if (!media) return
+    media.pause()
+    media.removeAttribute('src')
+    media.load()
+    media.remove()
+    media = null
+    usesMixer = false
+  }
 
   const bindMediaEvents = (element) => {
     element.addEventListener('play', () => callbacks.onPlay?.())
@@ -128,6 +155,42 @@ export function createMixedAudioPlayer(
     )
   }
 
+  const startPlayback = async (stream, useVideo) => {
+    destroyMedia()
+
+    media = createMediaElement(useVideo)
+    media.loop = loop
+    if (stream.direct) media.crossOrigin = 'anonymous'
+    bindMediaEvents(media)
+
+    media.src = stream.url
+    media.load()
+
+    const timeoutMs = prefersYouTubeAudioMix() ? 60_000 : 25_000
+    await waitForMediaReady(media, timeoutMs)
+
+    if (prefersYouTubeAudioMix()) {
+      try {
+        await attachToMixer(slotId, media, volume)
+        usesMixer = true
+      } catch {
+        usesMixer = false
+        media.volume = volume
+      }
+    } else {
+      media.volume = volume
+    }
+
+    try {
+      await media.play()
+    } catch (err) {
+      if (err?.name === 'NotAllowedError') {
+        throw new Error('Audio blocked — tap the page and try again')
+      }
+      throw err
+    }
+  }
+
   return {
     type: 'mixed-audio',
     setVolume: (v) => {
@@ -137,32 +200,20 @@ export function createMixedAudioPlayer(
     play: async () => {
       await getAudioContext()
 
-      const contentType = await probeStream(audioUrl)
+      const stream = await resolveStreamSource(source)
       const useVideo =
-        prefersYouTubeAudioMix() || contentType.toLowerCase().includes('video/')
-
-      media = createMediaElement(useVideo)
-      media.loop = loop
-      bindMediaEvents(media)
-
-      media.src = audioUrl
-      media.load()
-
-      const timeoutMs = prefersYouTubeAudioMix() ? 60_000 : 25_000
-      await waitForMediaReady(media, timeoutMs)
-
-      if (prefersYouTubeAudioMix()) {
-        await attachToMixer(slotId, media, volume)
-        usesMixer = true
-      } else {
-        media.volume = volume
-      }
+        prefersYouTubeAudioMix() ||
+        (stream.contentType || '').toLowerCase().includes('video/')
 
       try {
-        await media.play()
+        await startPlayback(stream, useVideo)
       } catch (err) {
-        if (err?.name === 'NotAllowedError') {
-          throw new Error('Audio blocked — tap the page and try again')
+        if (stream.direct && stream.proxyUrl) {
+          await startPlayback(
+            { ...stream, url: stream.proxyUrl, direct: false },
+            useVideo,
+          )
+          return
         }
         throw err
       }
@@ -175,14 +226,6 @@ export function createMixedAudioPlayer(
     getCurrentTime: () => media?.currentTime ?? 0,
     getDuration: () => media?.duration || 0,
     isPlaying: () => Boolean(media && !media.paused && !media.ended),
-    destroy: () => {
-      detachFromMixer(slotId)
-      if (!media) return
-      media.pause()
-      media.removeAttribute('src')
-      media.load()
-      media.remove()
-      media = null
-    },
+    destroy: destroyMedia,
   }
 }

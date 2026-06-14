@@ -68,8 +68,8 @@ export function getYouTubeAudioStreamSrc(videoId) {
   return `/api/youtube-audio?${params}`
 }
 
-export function createYouTubeAudioPlayer(audioUrl, slotId, volume = 0.7, callbacks = {}) {
-  return createMixedAudioPlayer(audioUrl, slotId, volume, callbacks, { loop: true })
+export function createYouTubeAudioPlayer(videoId, slotId, volume = 0.7, callbacks = {}) {
+  return createMixedAudioPlayer(videoId, slotId, volume, callbacks, { loop: true })
 }
 
 export function createYouTubePlayer(containerId, videoId, { volume = 70, onStateChange, onReady } = {}) {

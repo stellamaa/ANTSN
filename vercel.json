@@ -2,6 +2,9 @@
   "functions": {
     "api/youtube-audio.js": {
       "maxDuration": 60
+    },
+    "api/youtube-audio-resolve.js": {
+      "maxDuration": 30
     }
   }
 }

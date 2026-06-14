@@ -9,7 +9,6 @@ import {
 import {
   createYouTubeAudioPlayer,
   createYouTubePlayer,
-  getYouTubeAudioStreamSrc,
   loadYouTubeAPI,
   searchYouTube,
   YT_STATE,
@@ -247,8 +246,7 @@ export function useTrackManager({ spotify }) {
 
             await getAudioContext()
 
-            const audioUrl = getYouTubeAudioStreamSrc(video.videoId)
-            const adapter = createYouTubeAudioPlayer(audioUrl, slotId, volume, {
+            const adapter = createYouTubeAudioPlayer(video.videoId, slotId, volume, {
               onPlay: () => updateTrack(slotId, { playing: true }),
               onPause: () => updateTrack(slotId, { playing: false }),
               onEnded: () => updateTrack(slotId, { playing: false }),
