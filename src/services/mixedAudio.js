@@ -6,16 +6,48 @@ import {
 } from './audioMixer'
 import { prefersYouTubeAudioMix } from '../utils/device'
 
-function waitForMediaReady(audio, timeoutMs) {
+function getMediaHost() {
+  let host = document.getElementById('antsn-media-host')
+  if (!host) {
+    host = document.createElement('div')
+    host.id = 'antsn-media-host'
+    host.setAttribute('aria-hidden', 'true')
+    host.style.cssText =
+      'position:fixed;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none;left:0;top:0'
+    document.body.appendChild(host)
+  }
+  return host
+}
+
+function createMediaElement() {
+  if (prefersYouTubeAudioMix()) {
+    const video = document.createElement('video')
+    video.preload = 'auto'
+    video.playsInline = true
+    video.controls = false
+    video.setAttribute('playsinline', '')
+    video.setAttribute('webkit-playsinline', '')
+    getMediaHost().appendChild(video)
+    return video
+  }
+
+  const audio = new Audio()
+  audio.preload = 'auto'
+  audio.setAttribute('playsinline', 'true')
+  audio.setAttribute('webkit-playsinline', 'true')
+  return audio
+}
+
+function waitForMediaReady(media, timeoutMs) {
   return new Promise((resolve, reject) => {
-    if (audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+    if (media.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
       resolve()
       return
     }
 
     const timer = setTimeout(() => {
       cleanup()
-      if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      if (media.readyState >= HTMLMediaElement.HAVE_METADATA) {
         resolve()
         return
       }
@@ -29,26 +61,26 @@ function waitForMediaReady(audio, timeoutMs) {
 
     const onError = () => {
       cleanup()
-      const code = audio.error?.code
+      const code = media.error?.code
       const detail =
         code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
           ? 'stream format not supported'
           : code === MediaError.MEDIA_ERR_NETWORK
             ? 'network error loading stream'
-            : audio.error?.message || 'unknown media error'
+            : media.error?.message || 'unknown media error'
       reject(new Error(`Audio load failed: ${detail}`))
     }
 
     const cleanup = () => {
       clearTimeout(timer)
-      audio.removeEventListener('loadeddata', onReady)
-      audio.removeEventListener('canplay', onReady)
-      audio.removeEventListener('error', onError)
+      media.removeEventListener('loadeddata', onReady)
+      media.removeEventListener('canplay', onReady)
+      media.removeEventListener('error', onError)
     }
 
-    audio.addEventListener('loadeddata', onReady)
-    audio.addEventListener('canplay', onReady)
-    audio.addEventListener('error', onError)
+    media.addEventListener('loadeddata', onReady)
+    media.addEventListener('canplay', onReady)
+    media.addEventListener('error', onError)
   })
 }
 
@@ -59,20 +91,17 @@ export function createMixedAudioPlayer(
   callbacks = {},
   { loop = true } = {},
 ) {
-  const audio = new Audio()
-  audio.preload = 'auto'
-  audio.loop = loop
-  audio.setAttribute('playsinline', 'true')
-  audio.setAttribute('webkit-playsinline', 'true')
+  const media = createMediaElement()
+  media.loop = loop
 
   let usesMixer = false
 
-  audio.addEventListener('play', () => callbacks.onPlay?.())
-  audio.addEventListener('pause', () => callbacks.onPause?.())
-  audio.addEventListener('ended', () => {
-    if (!audio.loop) callbacks.onEnded?.()
+  media.addEventListener('play', () => callbacks.onPlay?.())
+  media.addEventListener('pause', () => callbacks.onPause?.())
+  media.addEventListener('ended', () => {
+    if (!media.loop) callbacks.onEnded?.()
   })
-  audio.addEventListener('error', () =>
+  media.addEventListener('error', () =>
     callbacks.onError?.(new Error('Audio playback failed')),
   )
 
@@ -80,26 +109,26 @@ export function createMixedAudioPlayer(
     type: 'mixed-audio',
     setVolume: (v) => {
       if (usesMixer) setMixerVolume(slotId, v)
-      else audio.volume = v
+      else media.volume = v
     },
     play: async () => {
       await getAudioContext()
 
-      audio.src = audioUrl
-      audio.load()
+      media.src = audioUrl
+      media.load()
 
       if (prefersYouTubeAudioMix()) {
-        await attachToMixer(slotId, audio, volume)
+        await attachToMixer(slotId, media, volume)
         usesMixer = true
       } else {
-        audio.volume = volume
+        media.volume = volume
       }
 
       const timeoutMs = prefersYouTubeAudioMix() ? 60_000 : 25_000
-      await waitForMediaReady(audio, timeoutMs)
+      await waitForMediaReady(media, timeoutMs)
 
       try {
-        await audio.play()
+        await media.play()
       } catch (err) {
         if (err?.name === 'NotAllowedError') {
           throw new Error('Audio blocked — tap the page and try again')
@@ -107,19 +136,20 @@ export function createMixedAudioPlayer(
         throw err
       }
     },
-    pause: () => audio.pause(),
+    pause: () => media.pause(),
     resume: async () => {
       await getAudioContext()
-      await audio.play()
+      await media.play()
     },
-    getCurrentTime: () => audio.currentTime,
-    getDuration: () => audio.duration || 0,
-    isPlaying: () => !audio.paused && !audio.ended,
+    getCurrentTime: () => media.currentTime,
+    getDuration: () => media.duration || 0,
+    isPlaying: () => !media.paused && !media.ended,
     destroy: () => {
       detachFromMixer(slotId)
-      audio.pause()
-      audio.removeAttribute('src')
-      audio.load()
+      media.pause()
+      media.removeAttribute('src')
+      media.load()
+      media.remove()
     },
   }
 }
