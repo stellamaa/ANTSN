@@ -1,4 +1,5 @@
 import { createMixedAudioPlayer } from './mixedAudio'
+import { prefersYouTubeAudioMix } from '../utils/device'
 
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY
 
@@ -62,7 +63,9 @@ export function loadYouTubeAPI() {
 }
 
 export function getYouTubeAudioStreamSrc(videoId) {
-  return `/api/youtube-audio?videoId=${encodeURIComponent(videoId)}`
+  const params = new URLSearchParams({ videoId })
+  if (prefersYouTubeAudioMix()) params.set('mobile', '1')
+  return `/api/youtube-audio?${params}`
 }
 
 export function createYouTubeAudioPlayer(audioUrl, slotId, volume = 0.7, callbacks = {}) {
