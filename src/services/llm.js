@@ -33,6 +33,7 @@ Rules:
 - one full-length spotify track at a time (premium); additional simultaneous spotify layers use 30s previews (marked sp· in ui)
 - set "full": true on play action when user wants a full spotify song and no other full spotify track is playing
 - combine multiple actions when needed (e.g. play rain on youtube + piano on spotify)
+- when user asks for two or more sounds at once, return multiple "play" actions in the actions array
 - if user asks to fade out before a song ends, use fade_out_before_end
 - if only one track is playing and user says "turn it up" without a number, use that track's slot
 - keep message terse and calm`
@@ -98,12 +99,44 @@ function cleanPlayQuery(message) {
     .trim()
 }
 
+function extractPlayQueries(message) {
+  let text = message.replace(/\band\s+(?!play)/gi, 'and play ')
+  const parts = text.split(/\s+and\s+/i)
+
+  return parts
+    .map((part) => {
+      const match = part.match(/play\s+(.+)/i)
+      return match ? cleanPlayQuery(match[1]) : null
+    })
+    .filter(Boolean)
+}
+
 function fallbackParser(message, tracks, options = {}) {
   const lower = message.toLowerCase()
   const actions = []
 
+  const playQueries = extractPlayQueries(message)
+  if (playQueries.length && !lower.match(/play\s*track\s*\d/)) {
+    const source = detectSource(message)
+    if (source === 'spotify' && !options.spotifyConnected) {
+      return {
+        message: 'connect spotify first (bottom left).',
+        actions: [],
+      }
+    }
+    for (const query of playQueries) {
+      actions.push({
+        type: 'play',
+        query,
+        volume: 0.7,
+        source,
+        full: source === 'spotify' && lower.includes('full'),
+      })
+    }
+  }
+
   const playMatch = lower.match(/play\s+(.+)/)
-  if (playMatch && !lower.includes('track')) {
+  if (playMatch && !lower.includes('track') && !playQueries.length) {
     const source = detectSource(message)
     if (source === 'spotify' && !options.spotifyConnected) {
       return {

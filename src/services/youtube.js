@@ -61,8 +61,8 @@ export function loadYouTubeAPI() {
 
 export function createYouTubePlayer(containerId, videoId, { volume = 70, onStateChange, onReady } = {}) {
   return new window.YT.Player(containerId, {
-    height: '0',
-    width: '0',
+    height: '200',
+    width: '200',
     videoId,
     playerVars: {
       autoplay: 1,
@@ -71,10 +71,13 @@ export function createYouTubePlayer(containerId, videoId, { volume = 70, onState
       fs: 0,
       modestbranding: 1,
       rel: 0,
+      playsinline: 1,
+      enablejsapi: 1,
     },
     events: {
       onReady: (event) => {
         event.target.setVolume(volume)
+        event.target.playVideo()
         onReady?.(event.target)
       },
       onStateChange: (event) => {

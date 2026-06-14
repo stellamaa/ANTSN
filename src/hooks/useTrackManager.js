@@ -32,11 +32,17 @@ function emptySlot(id) {
   }
 }
 
+const PLAY_STAGGER_MS = 450
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function isSlotActive(track) {
   return Boolean(track?.source && track?.mediaId)
 }
 
-export function useTrackManager({ onActivityChange, spotify }) {
+export function useTrackManager({ spotify }) {
   const [tracks, setTracks] = useState(() =>
     Array.from({ length: MAX_TRACKS }, (_, i) => emptySlot(i)),
   )
@@ -47,9 +53,7 @@ export function useTrackManager({ onActivityChange, spotify }) {
 
   useEffect(() => {
     tracksRef.current = tracks
-    const active = tracks.some((t) => t.playing)
-    onActivityChange?.(active)
-  }, [tracks, onActivityChange])
+  }, [tracks])
 
   useEffect(() => {
     loadYouTubeAPI().then(() => setApiReady(true))
@@ -239,13 +243,13 @@ export function useTrackManager({ onActivityChange, spotify }) {
   const applyVolume = useCallback(
     (trackIndex, volume) => {
       const slot = getSlot(trackIndex)
-      const adapter = playersRef.current[slot?.id]
-      if (!isSlotActive(slot) || !adapter) return false
+      if (!isSlotActive(slot)) return false
 
       const vol = normalizeVolume(volume)
       if (vol == null) return false
 
-      adapter.setVolume(vol)
+      const adapter = playersRef.current[slot.id]
+      adapter?.setVolume?.(vol)
       updateTrack(slot.id, { volume: vol })
       return true
     },
@@ -400,6 +404,7 @@ export function useTrackManager({ onActivityChange, spotify }) {
                 action.full ?? false,
               )
               results.push({ ok: true, action, played })
+              await delay(PLAY_STAGGER_MS)
               break
             }
             case 'set_volume': {

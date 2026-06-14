@@ -20,13 +20,13 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
   const showCursor = !input && !isLoading
 
   return (
-    <div className="fixed inset-0 z-20 flex flex-col items-center justify-center pointer-events-none px-4 sm:px-8">
-      <div className="w-full max-w-2xl flex flex-col items-center pointer-events-auto">
-        <div className="w-full mb-4 max-h-[35vh] overflow-y-auto flex flex-col items-center gap-3 px-2">
+    <div className="fixed inset-0 z-20 flex flex-col items-center justify-center pointer-events-none">
+      <div className="w-[90vw] flex flex-col items-center pointer-events-auto">
+        <div className="w-full mb-4 max-h-[32vh] sm:max-h-[35vh] overflow-y-auto flex flex-col items-center gap-2 sm:gap-3">
           {messages.map((msg) => (
             <div
               key={msg.id}
-              className={`text-center font-minimal text-xs sm:text-sm leading-relaxed max-w-lg ${
+              className={`w-full text-center font-minimal text-[11px] sm:text-sm leading-relaxed ${
                 msg.role === 'user'
                   ? 'text-antsn-white/90'
                   : msg.role === 'error'
@@ -41,7 +41,7 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
             </div>
           ))}
           {isLoading && (
-            <div className="text-antsn-grey text-xs font-minimal animate-pulse">
+            <div className="text-antsn-grey text-[11px] sm:text-xs font-minimal animate-pulse">
               thinking...
             </div>
           )}
@@ -53,10 +53,10 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
             {showCursor && (
               <>
                 <span
-                  className="pointer-events-none absolute left-1/2 bottom-2 -translate-x-1/2 w-2 h-4 sm:h-[1.125rem] bg-antsn-white/80 animate-blink"
+                  className="pointer-events-none absolute left-1/2 bottom-2 -translate-x-1/2 w-1.5 h-3.5 sm:w-2 sm:h-4 bg-antsn-white/80 animate-blink"
                   aria-hidden="true"
                 />
-                <span className="pointer-events-none absolute left-1/2 bottom-2 translate-x-1.5 text-antsn-grey/40 text-sm sm:text-base font-minimal whitespace-nowrap">
+                <span className="pointer-events-none absolute left-1/2 bottom-2 translate-x-1.5 text-antsn-grey/40 text-[11px] sm:text-base font-minimal whitespace-nowrap max-w-[80vw] truncate">
                   describe what you want to hear...
                 </span>
               </>
@@ -69,7 +69,7 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
               onChange={(e) => setInput(e.target.value)}
               placeholder={showCursor ? '' : 'describe what you want to hear...'}
               disabled={isLoading}
-              className="w-full bg-transparent text-center text-antsn-white text-sm sm:text-base font-minimal placeholder:text-antsn-grey/40 disabled:opacity-40 caret-antsn-white outline-none"
+              className="w-full bg-transparent text-center text-antsn-white text-[11px] sm:text-base font-minimal placeholder:text-antsn-grey/40 disabled:opacity-40 caret-antsn-white outline-none"
               autoComplete="off"
               spellCheck={false}
             />

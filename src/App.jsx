@@ -20,7 +20,6 @@ export default function App() {
     ),
   ])
   const [isLoading, setIsLoading] = useState(false)
-  const [isAudioActive, setIsAudioActive] = useState(false)
 
   const spotify = useSpotifyAuth()
 
@@ -30,7 +29,7 @@ export default function App() {
     setTrackVolume,
     toggleTrack,
     executeActions,
-  } = useTrackManager({ onActivityChange: setIsAudioActive, spotify })
+  } = useTrackManager({ spotify })
 
   const addMessage = useCallback((role, text) => {
     setMessages((prev) => [...prev, createMessage(role, text)])
@@ -83,7 +82,7 @@ export default function App() {
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <HalftoneBackground isActive={isAudioActive} />
+      <HalftoneBackground activeTracks={activeTracks} />
 
       <NowPlayingBar
         activeTracks={activeTracks}
@@ -100,9 +99,14 @@ export default function App() {
         isLoading={isLoading}
       />
 
-      <div className="sr-only" aria-hidden="true">
+      <div className="yt-player-host" aria-hidden="true">
         {tracks.map((track) => (
-          <div key={track.id} id={track.containerId} />
+          <div
+            key={track.id}
+            id={track.containerId}
+            className="yt-player-slot"
+            style={{ top: track.id * 200 }}
+          />
         ))}
       </div>
     </div>
