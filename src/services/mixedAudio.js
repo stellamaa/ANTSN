@@ -6,15 +6,19 @@ import {
 } from './audioMixer'
 import { prefersYouTubeAudioMix } from '../utils/device'
 
-function waitForCanPlay(audio, timeoutMs = 20_000) {
+function waitForMediaReady(audio, timeoutMs) {
   return new Promise((resolve, reject) => {
-    if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+    if (audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
       resolve()
       return
     }
 
     const timer = setTimeout(() => {
       cleanup()
+      if (audio.readyState >= HTMLMediaElement.HAVE_METADATA) {
+        resolve()
+        return
+      }
       reject(new Error('Audio load timeout'))
     }, timeoutMs)
 
@@ -37,10 +41,12 @@ function waitForCanPlay(audio, timeoutMs = 20_000) {
 
     const cleanup = () => {
       clearTimeout(timer)
+      audio.removeEventListener('loadeddata', onReady)
       audio.removeEventListener('canplay', onReady)
       audio.removeEventListener('error', onError)
     }
 
+    audio.addEventListener('loadeddata', onReady)
     audio.addEventListener('canplay', onReady)
     audio.addEventListener('error', onError)
   })
@@ -55,9 +61,7 @@ export function createMixedAudioPlayer(
 ) {
   const audio = new Audio()
   audio.preload = 'auto'
-  audio.src = audioUrl
   audio.loop = loop
-  audio.crossOrigin = 'anonymous'
   audio.setAttribute('playsinline', 'true')
   audio.setAttribute('webkit-playsinline', 'true')
 
@@ -81,6 +85,9 @@ export function createMixedAudioPlayer(
     play: async () => {
       await getAudioContext()
 
+      audio.src = audioUrl
+      audio.load()
+
       if (prefersYouTubeAudioMix()) {
         await attachToMixer(slotId, audio, volume)
         usesMixer = true
@@ -88,7 +95,8 @@ export function createMixedAudioPlayer(
         audio.volume = volume
       }
 
-      await waitForCanPlay(audio)
+      const timeoutMs = prefersYouTubeAudioMix() ? 60_000 : 25_000
+      await waitForMediaReady(audio, timeoutMs)
 
       try {
         await audio.play()

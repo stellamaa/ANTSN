@@ -65,18 +65,6 @@ export function getYouTubeAudioStreamSrc(videoId) {
   return `/api/youtube-audio?videoId=${encodeURIComponent(videoId)}`
 }
 
-export async function canStreamYouTubeAudio(videoId) {
-  try {
-    const response = await fetch(getYouTubeAudioStreamSrc(videoId), {
-      headers: { Range: 'bytes=0-0' },
-    })
-    const contentType = response.headers.get('content-type') || ''
-    return response.ok && !contentType.includes('json')
-  } catch {
-    return false
-  }
-}
-
 export function createYouTubeAudioPlayer(audioUrl, slotId, volume = 0.7, callbacks = {}) {
   return createMixedAudioPlayer(audioUrl, slotId, volume, callbacks, { loop: true })
 }

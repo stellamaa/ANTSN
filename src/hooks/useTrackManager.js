@@ -9,7 +9,6 @@ import {
 import {
   createYouTubeAudioPlayer,
   createYouTubePlayer,
-  canStreamYouTubeAudio,
   getYouTubeAudioStreamSrc,
   loadYouTubeAPI,
   searchYouTube,
@@ -239,17 +238,12 @@ export function useTrackManager({ spotify }) {
           )
         }
 
-        const attempts = layering ? 3 : 2
+        const attempts = 2
         let lastError = null
 
         for (let attempt = 0; attempt < attempts; attempt++) {
           try {
             if (attempt > 0) await delay(MOBILE_AUDIO_RETRY_MS)
-
-            const streamOk = await canStreamYouTubeAudio(video.videoId)
-            if (!streamOk) {
-              throw new Error('server audio stream unavailable')
-            }
 
             await getAudioContext()
 

@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/youtube-audio.js": {
+      "maxDuration": 60
+    }
+  }
+}
