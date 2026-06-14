@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { getYouTubeAudioStreamUrl } from './lib/youtube-audio.mjs'
+import { handleYouTubeAudioRequest } from './lib/youtube-audio.mjs'
 
 function youtubeAudioDevPlugin() {
   return {
@@ -12,22 +12,14 @@ function youtubeAudioDevPlugin() {
         const url = new URL(req.url, 'http://127.0.0.1')
         const videoId = url.searchParams.get('videoId')
 
-        res.setHeader('Access-Control-Allow-Origin', '*')
-        res.setHeader('Content-Type', 'application/json')
-
         if (!videoId) {
           res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify({ error: 'videoId required' }))
           return
         }
 
-        try {
-          const streamUrl = await getYouTubeAudioStreamUrl(videoId)
-          res.end(JSON.stringify({ url: streamUrl }))
-        } catch (error) {
-          res.statusCode = 500
-          res.end(JSON.stringify({ error: error.message || 'Audio stream failed' }))
-        }
+        await handleYouTubeAudioRequest(videoId, res)
       })
     },
   }
@@ -36,7 +28,7 @@ function youtubeAudioDevPlugin() {
 export default defineConfig({
   plugins: [react(), youtubeAudioDevPlugin()],
   server: {
-    host: '127.0.0.1',
+    host: true,
     port: 5173,
     strictPort: true,
   },

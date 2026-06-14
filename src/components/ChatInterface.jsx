@@ -56,7 +56,7 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
                   className="pointer-events-none absolute left-1/2 bottom-2 -translate-x-1/2 w-1.5 h-3.5 sm:w-2 sm:h-4 bg-antsn-white/80 animate-blink"
                   aria-hidden="true"
                 />
-                <span className="pointer-events-none absolute left-1/2 bottom-2 translate-x-1.5 text-antsn-grey/40 text-base sm:text-base font-minimal whitespace-nowrap max-w-[80vw] truncate">
+                <span className="pointer-events-none absolute left-1/2 bottom-2 translate-x-1.5 text-antsn-grey/40 text-[13px] sm:text-sm font-minimal whitespace-nowrap max-w-[80vw] truncate">
                   describe what you want to hear...
                 </span>
               </>

@@ -59,15 +59,20 @@ export function loadYouTubeAPI() {
   return apiReadyPromise
 }
 
-export async function resolveYouTubeAudioUrl(videoId) {
-  const response = await fetch(
-    `/api/youtube-audio?videoId=${encodeURIComponent(videoId)}`,
-  )
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    throw new Error(data.error || 'YouTube audio unavailable on mobile')
+export function getYouTubeAudioStreamSrc(videoId) {
+  return `/api/youtube-audio?videoId=${encodeURIComponent(videoId)}`
+}
+
+export async function canStreamYouTubeAudio(videoId) {
+  try {
+    const response = await fetch(getYouTubeAudioStreamSrc(videoId), {
+      headers: { Range: 'bytes=0-0' },
+    })
+    const contentType = response.headers.get('content-type') || ''
+    return response.ok && !contentType.includes('json')
+  } catch {
+    return false
   }
-  return data.url
 }
 
 export function createYouTubeAudioPlayer(audioUrl, volume = 0.7, callbacks = {}) {
@@ -75,10 +80,14 @@ export function createYouTubeAudioPlayer(audioUrl, volume = 0.7, callbacks = {})
   audio.preload = 'auto'
   audio.src = audioUrl
   audio.volume = volume
+  audio.setAttribute('playsinline', 'true')
 
   audio.addEventListener('play', () => callbacks.onPlay?.())
   audio.addEventListener('pause', () => callbacks.onPause?.())
   audio.addEventListener('ended', () => callbacks.onEnded?.())
+  audio.addEventListener('error', () =>
+    callbacks.onError?.(new Error('Audio playback failed')),
+  )
 
   return {
     type: 'youtube-audio',

@@ -9,8 +9,9 @@ import {
 import {
   createYouTubeAudioPlayer,
   createYouTubePlayer,
+  getYouTubeAudioStreamSrc,
+  canStreamYouTubeAudio,
   loadYouTubeAPI,
-  resolveYouTubeAudioUrl,
   searchYouTube,
   YT_STATE,
 } from '../services/youtube'
@@ -59,11 +60,7 @@ export function useTrackManager({ spotify }) {
   }, [tracks])
 
   useEffect(() => {
-    if (prefersYouTubeAudioMix()) {
-      setApiReady(true)
-      return
-    }
-    loadYouTubeAPI().then(() => setApiReady(true))
+    loadYouTubeAPI().finally(() => setApiReady(true))
   }, [])
 
   const updateTrack = useCallback((id, patch) => {
@@ -108,47 +105,15 @@ export function useTrackManager({ spotify }) {
     [clearFadeInterval],
   )
 
-  const attachYouTube = useCallback(
-    async (slotId, video, volume = 0.7) => {
-      const slot = tracksRef.current.find((t) => t.id === slotId)
-      if (isSlotActive(slot)) destroyPlayer(slot)
-
-      if (prefersYouTubeAudioMix()) {
-        const audioUrl = await resolveYouTubeAudioUrl(video.videoId)
-        const adapter = createYouTubeAudioPlayer(audioUrl, volume, {
-          onPlay: () => updateTrack(slotId, { playing: true }),
-          onPause: () => updateTrack(slotId, { playing: false }),
-          onEnded: () => updateTrack(slotId, { playing: false }),
-        })
-
-        playersRef.current[slotId] = adapter
-        await adapter.play()
-
-        updateTrack(slotId, {
-          source: 'youtube',
-          mediaId: video.videoId,
-          title: video.title,
-          channel: video.channel,
-          artist: null,
-          playing: true,
-          volume,
-          playbackMode: 'audio',
-          previewUrl: null,
-          player: null,
-        })
-
-        return adapter
-      }
-
-      if (!apiReady) throw new Error('YouTube API not ready')
-
-      return new Promise((resolve, reject) => {
+  const attachYouTubeIframe = useCallback(
+    (slotId, video, volume = 0.7) =>
+      new Promise((resolve, reject) => {
         let settled = false
         const timer = setTimeout(() => {
           if (!settled) reject(new Error('Player load timeout'))
         }, 15000)
 
-        createYouTubePlayer(slot.containerId, video.videoId, {
+        createYouTubePlayer(`yt-player-${slotId}`, video.videoId, {
           volume: Math.round(volume * 100),
           onReady: (yt) => {
             settled = true
@@ -191,9 +156,61 @@ export function useTrackManager({ spotify }) {
             }
           },
         })
-      })
+      }),
+    [updateTrack],
+  )
+
+  const attachYouTube = useCallback(
+    async (slotId, video, volume = 0.7) => {
+      const slot = tracksRef.current.find((t) => t.id === slotId)
+      if (isSlotActive(slot)) destroyPlayer(slot)
+
+      if (prefersYouTubeAudioMix()) {
+        try {
+          if (!apiReady && !window.YT?.Player) {
+            await loadYouTubeAPI()
+          }
+
+          const canStream = await canStreamYouTubeAudio(video.videoId)
+
+          if (canStream) {
+            const audioUrl = getYouTubeAudioStreamSrc(video.videoId)
+            const adapter = createYouTubeAudioPlayer(audioUrl, volume, {
+              onPlay: () => updateTrack(slotId, { playing: true }),
+              onPause: () => updateTrack(slotId, { playing: false }),
+              onEnded: () => updateTrack(slotId, { playing: false }),
+            })
+
+            playersRef.current[slotId] = adapter
+            await adapter.play()
+
+            updateTrack(slotId, {
+              source: 'youtube',
+              mediaId: video.videoId,
+              title: video.title,
+              channel: video.channel,
+              artist: null,
+              playing: true,
+              volume,
+              playbackMode: 'audio',
+              previewUrl: null,
+              player: null,
+            })
+
+            return adapter
+          }
+        } catch {
+          playersRef.current[slotId]?.destroy?.()
+          delete playersRef.current[slotId]
+        }
+
+        return attachYouTubeIframe(slotId, video, volume)
+      }
+
+      if (!apiReady) throw new Error('YouTube API not ready')
+      return attachYouTubeIframe(slotId, video, volume)
     },
-    [apiReady, destroyPlayer, updateTrack],
+    [apiReady, attachYouTubeIframe, destroyPlayer, updateTrack],
   )
 
   const attachSpotify = useCallback(
@@ -260,8 +277,13 @@ export function useTrackManager({ spotify }) {
         return attachSpotify(slotId, track, volume, preferFull)
       }
 
-      const results = await searchYouTube(query, 1)
-      if (!results.length) throw new Error(`No YouTube results for "${query}"`)
+      const results = await searchYouTube(`${query} -live`, 5)
+      if (!results.length) {
+        const fallback = await searchYouTube(query, 5)
+        if (!fallback.length) throw new Error(`No YouTube results for "${query}"`)
+        await attachYouTube(slotId, fallback[0], volume)
+        return { slotId: slotId + 1, ...fallback[0] }
+      }
       await attachYouTube(slotId, results[0], volume)
       return { slotId: slotId + 1, ...results[0] }
     },
