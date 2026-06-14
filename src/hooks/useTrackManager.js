@@ -9,12 +9,14 @@ import {
 import {
   createYouTubeAudioPlayer,
   createYouTubePlayer,
+  canStreamYouTubeAudio,
   getYouTubeAudioStreamSrc,
   loadYouTubeAPI,
   searchYouTube,
   YT_STATE,
 } from '../services/youtube'
 import { createMixedAudioPlayer } from '../services/mixedAudio'
+import { getAudioContext } from '../services/audioMixer'
 import { prefersYouTubeAudioMix } from '../utils/device'
 import { fadeVolume } from '../utils/fade'
 import { MAX_TRACKS } from '../utils/helpers'
@@ -42,6 +44,11 @@ function emptySlot(id) {
 
 const PLAY_STAGGER_MS = 450
 const MOBILE_PLAY_STAGGER_MS = 900
+const MOBILE_AUDIO_RETRY_MS = 800
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
 function layeringDelay(ms, pulseRef) {
   return new Promise((resolve) => {
@@ -214,7 +221,7 @@ export function useTrackManager({ spotify }) {
   )
 
   const attachYouTube = useCallback(
-    async (slotId, video, volume = 0.7) => {
+    async (slotId, video, volume = 0.7, { layering = false } = {}) => {
       const slot = tracksRef.current.find((t) => t.id === slotId)
       if (isSlotActive(slot)) destroyPlayer(slot)
 
@@ -222,47 +229,71 @@ export function useTrackManager({ spotify }) {
         const otherActive = tracksRef.current.filter(
           (t) => isSlotActive(t) && t.id !== slotId,
         ).length
+        const otherUsesIframe = tracksRef.current.some(
+          (t) => isSlotActive(t) && t.playbackMode === 'full',
+        )
 
-        try {
-          const audioUrl = getYouTubeAudioStreamSrc(video.videoId)
-          const adapter = createYouTubeAudioPlayer(audioUrl, slotId, volume, {
-            onPlay: () => updateTrack(slotId, { playing: true }),
-            onPause: () => updateTrack(slotId, { playing: false }),
-            onEnded: () => updateTrack(slotId, { playing: false }),
-          })
-
-          playersRef.current[slotId] = adapter
-          await adapter.play()
-
-          updateTrack(slotId, {
-            source: 'youtube',
-            mediaId: video.videoId,
-            title: video.title,
-            channel: video.channel,
-            artist: null,
-            playing: true,
-            volume,
-            playbackMode: 'audio',
-            previewUrl: null,
-            player: null,
-          })
-
-          return adapter
-        } catch {
-          playersRef.current[slotId]?.destroy?.()
-          delete playersRef.current[slotId]
-
-          if (otherActive > 0) {
-            throw new Error(
-              'Could not add layered track on mobile — audio stream unavailable',
-            )
-          }
-
-          if (!apiReady) throw new Error('YouTube API not ready')
-          const adapter = await attachYouTubeIframe(slotId, video, volume)
-          resumeOtherYouTubeIframes(slotId)
-          return adapter
+        if (layering && otherUsesIframe) {
+          throw new Error(
+            'Cannot layer after iframe fallback — stop all tracks and send one multi-track prompt',
+          )
         }
+
+        const attempts = layering ? 3 : 2
+        let lastError = null
+
+        for (let attempt = 0; attempt < attempts; attempt++) {
+          try {
+            if (attempt > 0) await delay(MOBILE_AUDIO_RETRY_MS)
+
+            const streamOk = await canStreamYouTubeAudio(video.videoId)
+            if (!streamOk) {
+              throw new Error('server audio stream unavailable')
+            }
+
+            await getAudioContext()
+
+            const audioUrl = getYouTubeAudioStreamSrc(video.videoId)
+            const adapter = createYouTubeAudioPlayer(audioUrl, slotId, volume, {
+              onPlay: () => updateTrack(slotId, { playing: true }),
+              onPause: () => updateTrack(slotId, { playing: false }),
+              onEnded: () => updateTrack(slotId, { playing: false }),
+            })
+
+            playersRef.current[slotId] = adapter
+            await adapter.play()
+
+            updateTrack(slotId, {
+              source: 'youtube',
+              mediaId: video.videoId,
+              title: video.title,
+              channel: video.channel,
+              artist: null,
+              playing: true,
+              volume,
+              playbackMode: 'audio',
+              previewUrl: null,
+              player: null,
+            })
+
+            return adapter
+          } catch (err) {
+            lastError = err
+            playersRef.current[slotId]?.destroy?.()
+            delete playersRef.current[slotId]
+          }
+        }
+
+        if (otherActive > 0 || layering) {
+          throw new Error(
+            `Could not add layered track — ${lastError?.message || 'audio stream unavailable'}`,
+          )
+        }
+
+        if (!apiReady) throw new Error('YouTube API not ready')
+        const adapter = await attachYouTubeIframe(slotId, video, volume)
+        resumeOtherYouTubeIframes(slotId)
+        return adapter
       }
 
       if (!apiReady) throw new Error('YouTube API not ready')
@@ -332,7 +363,13 @@ export function useTrackManager({ spotify }) {
   )
 
   const playQuery = useCallback(
-    async (query, volume = 0.7, source = 'youtube', preferFull = false) => {
+    async (
+      query,
+      volume = 0.7,
+      source = 'youtube',
+      preferFull = false,
+      { layering = false } = {},
+    ) => {
       const slotId = findSlot()
 
       if (source === 'spotify') {
@@ -347,10 +384,10 @@ export function useTrackManager({ spotify }) {
       if (!results.length) {
         const fallback = await searchYouTube(query, 5)
         if (!fallback.length) throw new Error(`No YouTube results for "${query}"`)
-        await attachYouTube(slotId, fallback[0], volume)
+        await attachYouTube(slotId, fallback[0], volume, { layering })
         return { slotId: slotId + 1, ...fallback[0] }
       }
-      await attachYouTube(slotId, results[0], volume)
+      await attachYouTube(slotId, results[0], volume, { layering })
       return { slotId: slotId + 1, ...results[0] }
     },
     [attachSpotify, attachYouTube, findSlot],
@@ -516,6 +553,8 @@ export function useTrackManager({ spotify }) {
     async (actions) => {
       const results = []
       const normalized = normalizeActions(actions)
+      const multiPlay =
+        normalized.filter((a) => a.type === 'play').length > 1
 
       for (let i = 0; i < normalized.length; i++) {
         const action = normalized[i]
@@ -527,6 +566,10 @@ export function useTrackManager({ spotify }) {
                 action.volume ?? 0.7,
                 action.source ?? 'youtube',
                 action.full ?? false,
+                {
+                  layering:
+                    multiPlay && (action.source ?? 'youtube') === 'youtube',
+                },
               )
               results.push({ ok: true, action, played })
 
@@ -538,7 +581,9 @@ export function useTrackManager({ spotify }) {
                   prefersYouTubeAudioMix() ? MOBILE_PLAY_STAGGER_MS : PLAY_STAGGER_MS,
                   layeringPulseRef,
                 )
-                if (!prefersYouTubeAudioMix()) {
+                if (prefersYouTubeAudioMix()) {
+                  await getAudioContext()
+                } else {
                   resumeOtherYouTubeIframes()
                 }
               }

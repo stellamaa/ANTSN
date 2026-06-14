@@ -19,7 +19,7 @@ function youtubeAudioDevPlugin() {
           return
         }
 
-        await handleYouTubeAudioRequest(videoId, res)
+        await handleYouTubeAudioRequest(videoId, res, req)
       })
     },
   }

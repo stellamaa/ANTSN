@@ -1,5 +1,50 @@
-import { attachToMixer, detachFromMixer, getAudioContext, setMixerVolume } from './audioMixer'
+import {
+  attachToMixer,
+  detachFromMixer,
+  getAudioContext,
+  setMixerVolume,
+} from './audioMixer'
 import { prefersYouTubeAudioMix } from '../utils/device'
+
+function waitForCanPlay(audio, timeoutMs = 20_000) {
+  return new Promise((resolve, reject) => {
+    if (audio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+      resolve()
+      return
+    }
+
+    const timer = setTimeout(() => {
+      cleanup()
+      reject(new Error('Audio load timeout'))
+    }, timeoutMs)
+
+    const onReady = () => {
+      cleanup()
+      resolve()
+    }
+
+    const onError = () => {
+      cleanup()
+      const code = audio.error?.code
+      const detail =
+        code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
+          ? 'stream format not supported'
+          : code === MediaError.MEDIA_ERR_NETWORK
+            ? 'network error loading stream'
+            : audio.error?.message || 'unknown media error'
+      reject(new Error(`Audio load failed: ${detail}`))
+    }
+
+    const cleanup = () => {
+      clearTimeout(timer)
+      audio.removeEventListener('canplay', onReady)
+      audio.removeEventListener('error', onError)
+    }
+
+    audio.addEventListener('canplay', onReady)
+    audio.addEventListener('error', onError)
+  })
+}
 
 export function createMixedAudioPlayer(
   audioUrl,
@@ -12,6 +57,7 @@ export function createMixedAudioPlayer(
   audio.preload = 'auto'
   audio.src = audioUrl
   audio.loop = loop
+  audio.crossOrigin = 'anonymous'
   audio.setAttribute('playsinline', 'true')
   audio.setAttribute('webkit-playsinline', 'true')
 
@@ -33,13 +79,25 @@ export function createMixedAudioPlayer(
       else audio.volume = v
     },
     play: async () => {
+      await getAudioContext()
+
       if (prefersYouTubeAudioMix()) {
         await attachToMixer(slotId, audio, volume)
         usesMixer = true
       } else {
         audio.volume = volume
       }
-      await audio.play()
+
+      await waitForCanPlay(audio)
+
+      try {
+        await audio.play()
+      } catch (err) {
+        if (err?.name === 'NotAllowedError') {
+          throw new Error('Audio blocked — tap the page and try again')
+        }
+        throw err
+      }
     },
     pause: () => audio.pause(),
     resume: async () => {

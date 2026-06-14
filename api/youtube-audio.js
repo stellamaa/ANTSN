@@ -14,5 +14,5 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'videoId required' })
   }
 
-  await handleYouTubeAudioRequest(String(videoId), res)
+  await handleYouTubeAudioRequest(String(videoId), res, req)
 }
