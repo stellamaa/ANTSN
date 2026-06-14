@@ -6,6 +6,7 @@ import SpotifyLogin from './components/SpotifyLogin'
 import { useSpotifyAuth } from './hooks/useSpotifyAuth'
 import { useTrackManager } from './hooks/useTrackManager'
 import { queryLLM } from './services/llm'
+import { resumeAudioContext } from './services/audioMixer'
 
 let messageId = 0
 function createMessage(role, text) {
@@ -26,6 +27,7 @@ export default function App() {
   const {
     tracks,
     activeTracks,
+    layeringPulseRef,
     setTrackVolume,
     toggleTrack,
     executeActions,
@@ -38,6 +40,7 @@ export default function App() {
   const handleSubmit = useCallback(
     async (text) => {
       addMessage('user', text)
+      resumeAudioContext().catch(() => {})
       setIsLoading(true)
 
       try {
@@ -82,7 +85,10 @@ export default function App() {
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      <HalftoneBackground activeTracks={activeTracks} />
+      <HalftoneBackground
+        activeTracks={activeTracks}
+        layeringPulseRef={layeringPulseRef}
+      />
 
       <NowPlayingBar
         activeTracks={activeTracks}

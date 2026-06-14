@@ -8,14 +8,28 @@ const SCOPES = [
 ].join(' ')
 
 function getRedirectUri() {
-  const envUri = import.meta.env.VITE_SPOTIFY_REDIRECT_URI
-  if (envUri) return envUri.replace(/\/$/, '')
+  const strip = (uri) => (uri ? uri.replace(/\/$/, '') : '')
 
-  if (typeof window === 'undefined') return ''
+  if (typeof window === 'undefined') {
+    return strip(import.meta.env.VITE_SPOTIFY_REDIRECT_URI)
+  }
 
   const { protocol, hostname, port } = window.location
   const host = hostname === 'localhost' ? '127.0.0.1' : hostname
-  return `${protocol}//${host}${port ? `:${port}` : ''}`.replace(/\/$/, '')
+  const origin = strip(`${protocol}//${host}${port ? `:${port}` : ''}`)
+
+  // Production (e.g. Vercel): must match the live site URL exactly
+  if (hostname.endsWith('.vercel.app')) {
+    const envUri = strip(import.meta.env.VITE_SPOTIFY_REDIRECT_URI)
+    if (envUri && !envUri.includes('127.0.0.1') && !envUri.includes('localhost')) {
+      return envUri
+    }
+    return origin
+  }
+
+  // Local dev: use env so OAuth always sends http://127.0.0.1:5173 (not localhost/https)
+  const envUri = strip(import.meta.env.VITE_SPOTIFY_REDIRECT_URI)
+  return envUri || origin
 }
 
 const STORAGE = {

@@ -6,6 +6,7 @@ export default {
       fontFamily: {
         dotmatrix: ['"DotGothic16"', 'monospace'],
         minimal: ['"IBM Plex Mono"', 'monospace'],
+        script: ['"Domine"', 'serif'],
       },
       colors: {
         antsn: {

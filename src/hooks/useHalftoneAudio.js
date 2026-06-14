@@ -1,12 +1,17 @@
 import { useEffect, useRef } from 'react'
 
-export function useHalftoneAudio(activeTracks) {
+export function useHalftoneAudio(activeTracks, layeringPulseRef) {
   const energyRef = useRef(0)
   const tracksRef = useRef(activeTracks)
+  const pulseRef = useRef(layeringPulseRef)
 
   useEffect(() => {
     tracksRef.current = activeTracks
   }, [activeTracks])
+
+  useEffect(() => {
+    pulseRef.current = layeringPulseRef
+  }, [layeringPulseRef])
 
   useEffect(() => {
     let frame
@@ -25,7 +30,12 @@ export function useHalftoneAudio(activeTracks) {
       const shimmer =
         playing.length > 0 ? Math.sin(phase * 2.4) * 0.08 * avgVolume : 0
 
-      energyRef.current = avgVolume * 0.55 + pulse + shimmer
+      const layer = pulseRef.current?.current
+      const layerBoost = layer
+        ? layer.strength * 0.65 + layer.progress * 0.2
+        : 0
+
+      energyRef.current = avgVolume * 0.55 + pulse + shimmer + layerBoost
       frame = requestAnimationFrame(animate)
     }
 

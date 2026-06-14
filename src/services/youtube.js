@@ -1,3 +1,5 @@
+import { createMixedAudioPlayer } from './mixedAudio'
+
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY
 
 export async function searchYouTube(query, maxResults = 3) {
@@ -75,41 +77,8 @@ export async function canStreamYouTubeAudio(videoId) {
   }
 }
 
-export function createYouTubeAudioPlayer(audioUrl, volume = 0.7, callbacks = {}) {
-  const audio = new Audio()
-  audio.preload = 'auto'
-  audio.src = audioUrl
-  audio.volume = volume
-  audio.setAttribute('playsinline', 'true')
-
-  audio.addEventListener('play', () => callbacks.onPlay?.())
-  audio.addEventListener('pause', () => callbacks.onPause?.())
-  audio.addEventListener('ended', () => callbacks.onEnded?.())
-  audio.addEventListener('error', () =>
-    callbacks.onError?.(new Error('Audio playback failed')),
-  )
-
-  return {
-    type: 'youtube-audio',
-    setVolume: (v) => {
-      audio.volume = v
-    },
-    play: async () => {
-      await audio.play()
-    },
-    pause: () => audio.pause(),
-    resume: async () => {
-      await audio.play()
-    },
-    getCurrentTime: () => audio.currentTime,
-    getDuration: () => audio.duration || 0,
-    isPlaying: () => !audio.paused && !audio.ended,
-    destroy: () => {
-      audio.pause()
-      audio.removeAttribute('src')
-      audio.load()
-    },
-  }
+export function createYouTubeAudioPlayer(audioUrl, slotId, volume = 0.7, callbacks = {}) {
+  return createMixedAudioPlayer(audioUrl, slotId, volume, callbacks, { loop: true })
 }
 
 export function createYouTubePlayer(containerId, videoId, { volume = 70, onStateChange, onReady } = {}) {

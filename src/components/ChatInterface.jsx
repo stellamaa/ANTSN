@@ -9,12 +9,21 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
+
+  const focusInput = () => {
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }
+
   const handleSubmit = (e) => {
     e.preventDefault()
     const trimmed = input.trim()
     if (!trimmed || isLoading) return
     onSubmit(trimmed)
     setInput('')
+    focusInput()
   }
 
   const showCursor = !input && !isLoading
@@ -26,7 +35,7 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
           {messages.map((msg) => (
             <div
               key={msg.id}
-              className={`w-full text-center font-minimal text-[11px] sm:text-sm leading-relaxed ${
+              className={`w-full text-center font-script font-normal text-[11px] sm:text-sm leading-relaxed ${
                 msg.role === 'user'
                   ? 'text-antsn-white/90'
                   : msg.role === 'error'
@@ -41,7 +50,7 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
             </div>
           ))}
           {isLoading && (
-            <div className="text-antsn-grey text-[11px] sm:text-xs font-minimal animate-pulse">
+            <div className="text-antsn-grey text-[11px] sm:text-xs font-script font-normal animate-pulse">
               thinking...
             </div>
           )}
@@ -56,7 +65,7 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
                   className="pointer-events-none absolute left-1/2 bottom-2 -translate-x-1/2 w-1.5 h-3.5 sm:w-2 sm:h-4 bg-antsn-white/80 animate-blink"
                   aria-hidden="true"
                 />
-                <span className="pointer-events-none absolute left-1/2 bottom-2 translate-x-1.5 text-antsn-grey/40 text-[13px] sm:text-sm font-minimal whitespace-nowrap max-w-[80vw] truncate">
+                <span className="pointer-events-none absolute left-1/2 bottom-2 translate-x-1.5 text-antsn-grey/40 text-[13px] sm:text-sm font-script font-normal whitespace-nowrap max-w-[80vw] truncate">
                   describe what you want to hear...
                 </span>
               </>
@@ -68,8 +77,7 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={showCursor ? '' : 'describe what you want to hear...'}
-              disabled={isLoading}
-              className="chat-input w-full bg-transparent text-center text-antsn-white text-base font-minimal placeholder:text-antsn-grey/40 disabled:opacity-40 caret-antsn-white outline-none"
+              className="chat-input w-full bg-transparent text-center text-antsn-white text-base font-minimal placeholder:text-antsn-grey/40 caret-antsn-white outline-none"
               autoComplete="off"
               spellCheck={false}
             />
