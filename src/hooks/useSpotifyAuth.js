@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   getSpotifyToken,
-  getStoredToken,
   handleSpotifyCallback,
+  hasSpotifySession,
   isSpotifyConfigured,
   logoutSpotify,
   startSpotifyLogin,
@@ -11,7 +11,7 @@ import { initSpotifyPlayer, isSpotifyPlaybackSupported, destroySpotifyPlayer } f
 
 export function useSpotifyAuth() {
   const [isConfigured] = useState(isSpotifyConfigured)
-  const [isAuthenticated, setIsAuthenticated] = useState(Boolean(getStoredToken()))
+  const [isAuthenticated, setIsAuthenticated] = useState(hasSpotifySession)
   const [isPlayerReady, setIsPlayerReady] = useState(false)
   const [playerError, setPlayerError] = useState(
     isSpotifyPlaybackSupported()
@@ -36,7 +36,7 @@ export function useSpotifyAuth() {
       } catch (err) {
         if (!cancelled) {
           setError(err.message)
-          setIsAuthenticated(Boolean(getStoredToken()))
+          setIsAuthenticated(hasSpotifySession())
         }
       }
     }
@@ -49,12 +49,9 @@ export function useSpotifyAuth() {
 
   useEffect(() => {
     if (!isAuthenticated) {
+      destroySpotifyPlayer()
       setIsPlayerReady(false)
-      setPlayerError(
-        isSpotifyPlaybackSupported()
-          ? null
-          : 'Open in Chrome or Safari for full Spotify playback',
-      )
+      setPlayerError(null)
       return
     }
 
@@ -95,11 +92,12 @@ export function useSpotifyAuth() {
     await startSpotifyLogin()
   }, [])
 
-  const logout = useCallback(async () => {
-    await logoutSpotify()
+  const logout = useCallback(() => {
     destroySpotifyPlayer()
+    logoutSpotify()
     setIsAuthenticated(false)
     setIsPlayerReady(false)
+    setError(null)
     setPlayerError(null)
   }, [])
 

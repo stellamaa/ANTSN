@@ -1,4 +1,11 @@
-import { attachToMixer, detachFromMixer, getAudioContext, setMixerVolume } from './audioMixer'
+import {
+  attachToMixer,
+  detachFromMixer,
+  getAudioContext,
+  hasMixerNode,
+  setMixerPan,
+  setMixerVolume,
+} from './audioMixer'
 import { getYouTubeAudioStreamSrc } from './youtube'
 
 function getMediaHost() {
@@ -63,7 +70,13 @@ function waitForMediaReady(media, timeoutMs = 60_000) {
  * No cross-origin URLs (those break iOS decode / Web Audio).
  * Web Audio mixer combines multiple tracks (iOS blocks multiple iframes, not this path).
  */
-export function createMobileYouTubePlayer(videoId, slotId, volume = 0.7, callbacks = {}) {
+export function createMobileYouTubePlayer(
+  videoId,
+  slotId,
+  volume = 0.7,
+  callbacks = {},
+  pan = 0,
+) {
   const video = document.createElement('video')
   video.preload = 'auto'
   video.playsInline = true
@@ -74,6 +87,8 @@ export function createMobileYouTubePlayer(videoId, slotId, volume = 0.7, callbac
   getMediaHost().appendChild(video)
 
   let usesMixer = false
+  let currentVolume = volume
+  let currentPan = pan
 
   video.addEventListener('play', () => callbacks.onPlay?.())
   video.addEventListener('pause', () => callbacks.onPause?.())
@@ -83,13 +98,13 @@ export function createMobileYouTubePlayer(videoId, slotId, volume = 0.7, callbac
 
   const playNative = async () => {
     usesMixer = false
-    video.volume = volume
+    video.volume = currentVolume
     await video.play()
   }
 
   const playMixed = async () => {
     await getAudioContext()
-    await attachToMixer(slotId, video, volume)
+    await attachToMixer(slotId, video, currentVolume, currentPan)
     usesMixer = true
     await video.play()
   }
@@ -97,8 +112,19 @@ export function createMobileYouTubePlayer(videoId, slotId, volume = 0.7, callbac
   return {
     type: 'mixed-audio',
     setVolume: (v) => {
-      if (usesMixer) setMixerVolume(slotId, v)
-      else video.volume = v
+      currentVolume = v
+      if (usesMixer || hasMixerNode(slotId)) {
+        usesMixer = true
+        setMixerVolume(slotId, v)
+      } else {
+        video.volume = v
+      }
+    },
+    setPan: (p) => {
+      currentPan = p
+      if (usesMixer || hasMixerNode(slotId)) {
+        setMixerPan(slotId, p)
+      }
     },
     play: async () => {
       video.src = getYouTubeAudioStreamSrc(videoId)

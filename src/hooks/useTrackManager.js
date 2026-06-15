@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { searchSpotify } from '../services/spotify/api'
 import {
   clearSpotifySdkSlot,
-  createPreviewPlayer,
   getSpotifySdkSlot,
   playSpotifyFull,
 } from '../services/spotify/playback'
@@ -18,6 +17,7 @@ import { getAudioContext } from '../services/audioMixer'
 import { prefersYouTubeAudioMix } from '../utils/device'
 import { fadeVolume } from '../utils/fade'
 import { MAX_TRACKS } from '../utils/helpers'
+import { normalizePan } from '../utils/helpers'
 import { normalizeActions, normalizeVolume } from '../utils/volume'
 import {
   usePlaybackPersistence,
@@ -34,6 +34,7 @@ function emptySlot(id) {
     channel: null,
     playing: false,
     volume: 0.7,
+    pan: 0,
     playbackMode: null,
     previewUrl: null,
     containerId: `yt-player-${id}`,
@@ -157,6 +158,7 @@ export function useTrackManager({ spotify }) {
             const adapter = {
               type: 'youtube',
               setVolume: (v) => yt.setVolume(Math.round(v * 100)),
+              setPan: () => {},
               play: () => yt.playVideo(),
               pause: () => yt.pauseVideo(),
               resume: () => yt.playVideo(),
@@ -175,6 +177,7 @@ export function useTrackManager({ spotify }) {
               artist: null,
               playing: true,
               volume,
+              pan: 0,
               playbackMode: 'full',
               previewUrl: null,
               player: yt,
@@ -223,67 +226,68 @@ export function useTrackManager({ spotify }) {
       const slot = tracksRef.current.find((t) => t.id === slotId)
       if (isSlotActive(slot)) destroyPlayer(slot)
 
-      if (prefersYouTubeAudioMix()) {
-        const otherActive = tracksRef.current.filter(
-          (t) => isSlotActive(t) && t.id !== slotId,
-        ).length
-        const otherUsesIframe = tracksRef.current.some(
-          (t) => isSlotActive(t) && t.playbackMode === 'full',
+      const trackPan = slot?.pan ?? 0
+      const otherActive = tracksRef.current.filter(
+        (t) => isSlotActive(t) && t.id !== slotId,
+      ).length
+      const otherUsesIframe = tracksRef.current.some(
+        (t) => isSlotActive(t) && t.playbackMode === 'full',
+      )
+
+      if (layering && otherUsesIframe) {
+        throw new Error(
+          'Cannot layer after iframe fallback — stop all tracks and send one multi-track prompt',
         )
+      }
 
-        if (layering && otherUsesIframe) {
-          throw new Error(
-            'Cannot layer after iframe fallback — stop all tracks and send one multi-track prompt',
-          )
-        }
+      const attempts = prefersYouTubeAudioMix() ? 2 : 1
+      let lastError = null
 
-        const attempts = 2
-        let lastError = null
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        try {
+          if (attempt > 0) await delay(MOBILE_AUDIO_RETRY_MS)
 
-        for (let attempt = 0; attempt < attempts; attempt++) {
-          try {
-            if (attempt > 0) await delay(MOBILE_AUDIO_RETRY_MS)
-
-            const adapter = createYouTubeAudioPlayer(video.videoId, slotId, volume, {
+          const adapter = createYouTubeAudioPlayer(
+            video.videoId,
+            slotId,
+            volume,
+            {
               onPlay: () => updateTrack(slotId, { playing: true }),
               onPause: () => updateTrack(slotId, { playing: false }),
               onEnded: () => updateTrack(slotId, { playing: false }),
-            })
-
-            playersRef.current[slotId] = adapter
-            await adapter.play()
-
-            updateTrack(slotId, {
-              source: 'youtube',
-              mediaId: video.videoId,
-              title: video.title,
-              channel: video.channel,
-              artist: null,
-              playing: true,
-              volume,
-              playbackMode: 'audio',
-              previewUrl: null,
-              player: null,
-            })
-
-            return adapter
-          } catch (err) {
-            lastError = err
-            playersRef.current[slotId]?.destroy?.()
-            delete playersRef.current[slotId]
-          }
-        }
-
-        if (otherActive > 0 || layering) {
-          throw new Error(
-            `Could not add layered track — ${lastError?.message || 'audio stream unavailable'}`,
+            },
+            trackPan,
           )
-        }
 
-        if (!apiReady) throw new Error('YouTube API not ready')
-        const adapter = await attachYouTubeIframe(slotId, video, volume)
-        resumeOtherYouTubeIframes(slotId)
-        return adapter
+          playersRef.current[slotId] = adapter
+          await adapter.play()
+
+          updateTrack(slotId, {
+            source: 'youtube',
+            mediaId: video.videoId,
+            title: video.title,
+            channel: video.channel,
+            artist: null,
+            playing: true,
+            volume,
+            pan: trackPan,
+            playbackMode: 'audio',
+            previewUrl: null,
+            player: null,
+          })
+
+          return adapter
+        } catch (err) {
+          lastError = err
+          playersRef.current[slotId]?.destroy?.()
+          delete playersRef.current[slotId]
+        }
+      }
+
+      if (otherActive > 0 || layering) {
+        throw new Error(
+          `Could not add layered track — ${lastError?.message || 'audio stream unavailable'}`,
+        )
       }
 
       if (!apiReady) throw new Error('YouTube API not ready')
@@ -303,6 +307,8 @@ export function useTrackManager({ spotify }) {
       const slot = tracksRef.current.find((t) => t.id === slotId)
       if (isSlotActive(slot)) destroyPlayer(slot)
 
+      const trackPan = slot?.pan ?? 0
+
       const sdkSlot = getSpotifySdkSlot()
       const canUseFull =
         preferFull &&
@@ -316,13 +322,10 @@ export function useTrackManager({ spotify }) {
         adapter = await playSpotifyFull(slotId, track, volume)
         playbackMode = 'full'
       } else if (track.previewUrl) {
-        if (prefersYouTubeAudioMix()) {
-          adapter = createMixedAudioPlayer(track.previewUrl, slotId, volume, {}, {
-            loop: true,
-          })
-        } else {
-          adapter = createPreviewPlayer(track.previewUrl, volume)
-        }
+        adapter = createMixedAudioPlayer(track.previewUrl, slotId, volume, {}, {
+          loop: true,
+          pan: trackPan,
+        })
         await adapter.play()
       } else if (spotify.isPlayerReady && sdkSlot === null) {
         adapter = await playSpotifyFull(slotId, track, volume)
@@ -342,6 +345,7 @@ export function useTrackManager({ spotify }) {
         channel: track.artist,
         playing: true,
         volume,
+        pan: trackPan,
         playbackMode,
         previewUrl: track.previewUrl,
         player: null,
@@ -417,6 +421,27 @@ export function useTrackManager({ spotify }) {
       return applyVolume(trackIndex, slot.volume + delta)
     },
     [applyVolume, getSlot],
+  )
+
+  const applyPan = useCallback(
+    (trackIndex, pan) => {
+      const slot = getSlot(trackIndex)
+      if (!isSlotActive(slot)) return false
+
+      const p = normalizePan(pan)
+      if (p == null) return false
+
+      const adapter = playersRef.current[slot.id]
+      adapter?.setPan?.(p)
+      updateTrack(slot.id, { pan: p })
+      return true
+    },
+    [getSlot, updateTrack],
+  )
+
+  const setTrackPan = useCallback(
+    (trackIndex, pan) => applyPan(trackIndex, pan),
+    [applyPan],
   )
 
   const toggleTrack = useCallback(
@@ -571,7 +596,10 @@ export function useTrackManager({ spotify }) {
                   prefersYouTubeAudioMix() ? MOBILE_PLAY_STAGGER_MS : PLAY_STAGGER_MS,
                   layeringPulseRef,
                 )
-                if (prefersYouTubeAudioMix()) {
+                const usesMixedAudio = tracksRef.current.some(
+                  (t) => isSlotActive(t) && t.playbackMode === 'audio',
+                )
+                if (usesMixedAudio) {
                   await getAudioContext()
                 } else {
                   resumeOtherYouTubeIframes()
@@ -655,6 +683,7 @@ export function useTrackManager({ spotify }) {
     playQuery,
     setTrackVolume,
     adjustTrackVolume,
+    setTrackPan,
     toggleTrack,
     pauseTrack,
     resumeTrack,

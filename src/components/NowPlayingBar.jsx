@@ -1,4 +1,10 @@
-import { volumeToPercent, truncate } from '../utils/helpers'
+import {
+  panLabel,
+  panToPercent,
+  supportsTrackPan,
+  truncate,
+  volumeToPercent,
+} from '../utils/helpers'
 
 function PlayPauseIcon({ playing }) {
   if (playing) {
@@ -17,7 +23,7 @@ function PlayPauseIcon({ playing }) {
   )
 }
 
-function TrackItem({ track, onToggle, onVolumeChange }) {
+function TrackItem({ track, onToggle, onVolumeChange, onPanChange }) {
   const sourceLabel =
     track.source === 'spotify'
       ? track.playbackMode === 'preview'
@@ -28,6 +34,7 @@ function TrackItem({ track, onToggle, onVolumeChange }) {
         : 'yt'
 
   const trackNumber = track.id + 1
+  const canPan = supportsTrackPan(track)
 
   return (
     <div className="flex items-center gap-1.5 sm:gap-3 text-[9px] sm:text-xs font-minimal text-antsn-white/80 shrink-0">
@@ -57,11 +64,33 @@ function TrackItem({ track, onToggle, onVolumeChange }) {
       <span className="tabular-nums text-antsn-grey w-6 sm:w-7 text-right text-[8px] sm:text-[10px]">
         {volumeToPercent(track.volume)}%
       </span>
+      {canPan && (
+        <>
+          <input
+            type="range"
+            min="-100"
+            max="100"
+            value={panToPercent(track.pan ?? 0)}
+            onChange={(e) => onPanChange(trackNumber, Number(e.target.value) / 100)}
+            className="volume-slider w-8 sm:w-12"
+            aria-label={`Pan for track ${trackNumber}`}
+          />
+          <span className="tabular-nums text-antsn-grey w-3 text-center text-[8px] sm:text-[10px]">
+            {panLabel(track.pan ?? 0)}
+          </span>
+        </>
+      )}
     </div>
   )
 }
 
-export default function NowPlayingBar({ activeTracks, onToggle, onVolumeChange, spotify }) {
+export default function NowPlayingBar({
+  activeTracks,
+  onToggle,
+  onVolumeChange,
+  onPanChange,
+  spotify,
+}) {
   return (
     <header className="fixed top-0 left-0 right-0 z-30 px-3 sm:px-6 py-3 sm:py-4 flex items-start justify-between gap-2 sm:gap-4 pointer-events-auto">
       <div className="flex flex-col gap-0.5 sm:gap-1 min-w-0 shrink-0">
@@ -83,7 +112,7 @@ export default function NowPlayingBar({ activeTracks, onToggle, onVolumeChange, 
         )}
       </div>
 
-      <div className="flex flex-col items-end gap-1.5 min-w-0 max-w-[62vw] sm:max-w-none">
+      <div className="flex flex-col items-end gap-1.5 min-w-0 max-w-[72vw] sm:max-w-none">
         {activeTracks.length === 0 ? (
           <span className="text-[9px] sm:text-xs text-antsn-grey/60 font-minimal">
             no tracks
@@ -96,6 +125,7 @@ export default function NowPlayingBar({ activeTracks, onToggle, onVolumeChange, 
                 track={track}
                 onToggle={onToggle}
                 onVolumeChange={onVolumeChange}
+                onPanChange={onPanChange}
               />
             ))}
           </div>

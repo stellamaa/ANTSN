@@ -40,6 +40,7 @@ const STORAGE = {
 }
 
 let pendingCallback = null
+let sessionVersion = 0
 
 function randomString(length = 64) {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'
@@ -68,7 +69,13 @@ export function getStoredToken() {
 }
 
 export function clearSpotifySession() {
+  sessionVersion += 1
   Object.values(STORAGE).forEach((key) => sessionStorage.removeItem(key))
+}
+
+export function hasSpotifySession() {
+  if (getStoredToken()) return true
+  return Boolean(sessionStorage.getItem(STORAGE.refresh))
 }
 
 async function exchangeCode(code, verifier) {
@@ -94,7 +101,7 @@ async function exchangeCode(code, verifier) {
   return response.json()
 }
 
-async function refreshToken(refresh) {
+async function refreshToken(refresh, version) {
   const body = new URLSearchParams({
     client_id: CLIENT_ID,
     grant_type: 'refresh_token',
@@ -106,6 +113,8 @@ async function refreshToken(refresh) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
   })
+
+  if (version !== sessionVersion) return null
 
   if (!response.ok) {
     clearSpotifySession()
@@ -124,13 +133,16 @@ function storeTokens(data) {
 }
 
 export async function getSpotifyToken() {
+  const version = sessionVersion
   const cached = getStoredToken()
   if (cached) return cached
 
   const refresh = sessionStorage.getItem(STORAGE.refresh)
-  if (!refresh) return null
+  if (!refresh || version !== sessionVersion) return null
 
-  const data = await refreshToken(refresh)
+  const data = await refreshToken(refresh, version)
+  if (!data || version !== sessionVersion) return null
+
   storeTokens(data)
   return data.access_token
 }
@@ -151,6 +163,7 @@ export async function startSpotifyLogin() {
     scope: SCOPES,
     code_challenge_method: 'S256',
     code_challenge: challenge,
+    show_dialog: 'true',
   })
 
   window.location.href = `https://accounts.spotify.com/authorize?${params}`

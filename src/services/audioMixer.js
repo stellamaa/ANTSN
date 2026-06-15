@@ -2,6 +2,14 @@ let audioContext = null
 const nodes = new Map()
 const elementSources = new WeakMap()
 
+function scheduleParam(param, value) {
+  if (audioContext?.state === 'running') {
+    param.setTargetAtTime(value, audioContext.currentTime, 0.01)
+  } else {
+    param.value = value
+  }
+}
+
 export async function getAudioContext() {
   if (!audioContext) {
     audioContext = new AudioContext()
@@ -12,13 +20,21 @@ export async function getAudioContext() {
   return audioContext
 }
 
-export async function attachToMixer(slotId, audioElement, volume = 0.7) {
+export function hasMixerNode(slotId) {
+  return nodes.has(slotId)
+}
+
+export async function attachToMixer(slotId, audioElement, volume = 0.7, pan = 0) {
   const ctx = await getAudioContext()
   const existing = nodes.get(slotId)
 
+  // iOS routes media-element volume into Web Audio; keep at 1 and use gain node.
+  audioElement.volume = 1
+
   if (existing?.audio === audioElement) {
-    existing.gain.gain.value = volume
-    return existing.gain
+    scheduleParam(existing.gain.gain, volume)
+    scheduleParam(existing.panner.pan, pan)
+    return { gain: existing.gain, panner: existing.panner }
   }
 
   detachFromMixer(slotId)
@@ -30,17 +46,25 @@ export async function attachToMixer(slotId, audioElement, volume = 0.7) {
   }
 
   const gain = ctx.createGain()
+  const panner = ctx.createStereoPanner()
   gain.gain.value = volume
+  panner.pan.value = pan
   source.connect(gain)
-  gain.connect(ctx.destination)
+  gain.connect(panner)
+  panner.connect(ctx.destination)
 
-  nodes.set(slotId, { source, gain, audio: audioElement })
-  return gain
+  nodes.set(slotId, { source, gain, panner, audio: audioElement })
+  return { gain, panner }
 }
 
 export function setMixerVolume(slotId, volume) {
   const node = nodes.get(slotId)
-  if (node) node.gain.gain.value = volume
+  if (node) scheduleParam(node.gain.gain, volume)
+}
+
+export function setMixerPan(slotId, pan) {
+  const node = nodes.get(slotId)
+  if (node) scheduleParam(node.panner.pan, pan)
 }
 
 export function detachFromMixer(slotId) {
@@ -49,6 +73,7 @@ export function detachFromMixer(slotId) {
 
   try {
     node.gain.disconnect()
+    node.panner.disconnect()
   } catch {
     /* already disconnected */
   }

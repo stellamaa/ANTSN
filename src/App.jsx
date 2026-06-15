@@ -29,9 +29,26 @@ export default function App() {
     activeTracks,
     layeringPulseRef,
     setTrackVolume,
+    setTrackPan,
     toggleTrack,
     executeActions,
   } = useTrackManager({ spotify })
+
+  const handleVolumeChange = useCallback(
+    (trackIndex, volume) => {
+      resumeAudioContext().catch(() => {})
+      setTrackVolume(trackIndex, volume)
+    },
+    [setTrackVolume],
+  )
+
+  const handlePanChange = useCallback(
+    (trackIndex, pan) => {
+      resumeAudioContext().catch(() => {})
+      setTrackPan(trackIndex, pan)
+    },
+    [setTrackPan],
+  )
 
   const addMessage = useCallback((role, text) => {
     setMessages((prev) => [...prev, createMessage(role, text)])
@@ -93,7 +110,8 @@ export default function App() {
       <NowPlayingBar
         activeTracks={activeTracks}
         onToggle={toggleTrack}
-        onVolumeChange={setTrackVolume}
+        onVolumeChange={handleVolumeChange}
+        onPanChange={handlePanChange}
         spotify={spotify}
       />
 

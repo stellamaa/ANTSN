@@ -10,7 +10,7 @@ export default function SpotifyLogin({ spotify }) {
       >
         {spotify.isAuthenticated ? 'disconnect spotify' : 'connect spotify'}
       </button>
-      {(spotify.error || spotify.playerError) && (
+      {(spotify.isAuthenticated && (spotify.error || spotify.playerError)) && (
         <p className="mt-1 text-[10px] text-antsn-grey/70 max-w-[240px] font-minimal">
           {spotify.error || spotify.playerError}
         </p>

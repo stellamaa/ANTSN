@@ -5,6 +5,7 @@ let sdkPromise = null
 let playerInstance = null
 let deviceId = null
 let sdkSlotId = null
+let initGeneration = 0
 
 const BROWSER_HINT =
   'Open http://127.0.0.1:5173 in Chrome or Safari for full Spotify tracks.'
@@ -66,14 +67,18 @@ export async function initSpotifyPlayer({ onReady, onStateChange, onError }) {
     throw new Error(message)
   }
 
+  const generation = ++initGeneration
+
   if (playerInstance && deviceId) {
     onReady?.({ player: playerInstance, deviceId })
     return playerInstance
   }
 
   await loadSpotifySDK()
+  if (generation !== initGeneration) return null
 
   const token = await getSpotifyToken()
+  if (generation !== initGeneration) return null
   if (!token) {
     const message = 'Spotify session missing — connect again'
     onError?.(message)
@@ -85,35 +90,54 @@ export async function initSpotifyPlayer({ onReady, onStateChange, onError }) {
     volume: 0.7,
     getOAuthToken: async (cb) => {
       const nextToken = await getSpotifyToken()
+      if (generation !== initGeneration) return
       if (nextToken) cb(nextToken)
       else onError?.('Spotify session expired — connect again')
     },
   })
 
   player.addListener('ready', ({ device_id }) => {
+    if (generation !== initGeneration) {
+      player.disconnect()
+      return
+    }
     deviceId = device_id
     playerInstance = player
     onReady?.({ player, deviceId: device_id })
   })
 
   player.addListener('not_ready', () => {
+    if (generation !== initGeneration) return
     deviceId = null
   })
 
   player.addListener('player_state_changed', (state) => {
+    if (generation !== initGeneration) return
     onStateChange?.(state)
   })
 
-  player.addListener('initialization_error', ({ message }) =>
-    onError?.(formatPlayerError(message)),
-  )
-  player.addListener('authentication_error', ({ message }) => onError?.(message))
-  player.addListener('account_error', ({ message }) =>
-    onError?.(message || 'Spotify Premium required for full playback'),
-  )
-  player.addListener('playback_error', ({ message }) => onError?.(message))
+  player.addListener('initialization_error', ({ message }) => {
+    if (generation !== initGeneration) return
+    onError?.(formatPlayerError(message))
+  })
+  player.addListener('authentication_error', ({ message }) => {
+    if (generation !== initGeneration) return
+    onError?.(message)
+  })
+  player.addListener('account_error', ({ message }) => {
+    if (generation !== initGeneration) return
+    onError?.(message || 'Spotify Premium required for full playback')
+  })
+  player.addListener('playback_error', ({ message }) => {
+    if (generation !== initGeneration) return
+    onError?.(message)
+  })
 
   const connected = await player.connect()
+  if (generation !== initGeneration) {
+    player.disconnect()
+    return null
+  }
   if (!connected) {
     const message = BROWSER_HINT
     onError?.(message)
@@ -137,6 +161,7 @@ export async function playSpotifyFull(slotId, track, volume = 0.7) {
   return {
     type: 'spotify-sdk',
     setVolume: (v) => player.setVolume(v),
+    setPan: () => {},
     play: async () => {
       await startSpotifyPlayback(deviceId, track.uri)
     },
@@ -172,6 +197,7 @@ export function createPreviewPlayer(previewUrl, volume = 0.7) {
     setVolume: (v) => {
       audio.volume = v
     },
+    setPan: () => {},
     play: async () => {
       await audio.play()
     },
@@ -190,8 +216,13 @@ export function createPreviewPlayer(previewUrl, volume = 0.7) {
 }
 
 export function destroySpotifyPlayer() {
+  initGeneration += 1
   if (playerInstance) {
-    playerInstance.disconnect()
+    try {
+      playerInstance.disconnect()
+    } catch {
+      /* already disconnected */
+    }
     playerInstance = null
     deviceId = null
     sdkSlotId = null
