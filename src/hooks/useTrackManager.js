@@ -226,68 +226,75 @@ export function useTrackManager({ spotify }) {
       const slot = tracksRef.current.find((t) => t.id === slotId)
       if (isSlotActive(slot)) destroyPlayer(slot)
 
-      const trackPan = slot?.pan ?? 0
-      const otherActive = tracksRef.current.filter(
-        (t) => isSlotActive(t) && t.id !== slotId,
-      ).length
-      const otherUsesIframe = tracksRef.current.some(
-        (t) => isSlotActive(t) && t.playbackMode === 'full',
-      )
-
-      if (layering && otherUsesIframe) {
-        throw new Error(
-          'Cannot layer after iframe fallback — stop all tracks and send one multi-track prompt',
+      if (prefersYouTubeAudioMix()) {
+        const trackPan = slot?.pan ?? 0
+        const otherActive = tracksRef.current.filter(
+          (t) => isSlotActive(t) && t.id !== slotId,
+        ).length
+        const otherUsesIframe = tracksRef.current.some(
+          (t) => isSlotActive(t) && t.playbackMode === 'full',
         )
-      }
 
-      const attempts = prefersYouTubeAudioMix() ? 2 : 1
-      let lastError = null
-
-      for (let attempt = 0; attempt < attempts; attempt++) {
-        try {
-          if (attempt > 0) await delay(MOBILE_AUDIO_RETRY_MS)
-
-          const adapter = createYouTubeAudioPlayer(
-            video.videoId,
-            slotId,
-            volume,
-            {
-              onPlay: () => updateTrack(slotId, { playing: true }),
-              onPause: () => updateTrack(slotId, { playing: false }),
-              onEnded: () => updateTrack(slotId, { playing: false }),
-            },
-            trackPan,
+        if (layering && otherUsesIframe) {
+          throw new Error(
+            'Cannot layer after iframe fallback — stop all tracks and send one multi-track prompt',
           )
-
-          playersRef.current[slotId] = adapter
-          await adapter.play()
-
-          updateTrack(slotId, {
-            source: 'youtube',
-            mediaId: video.videoId,
-            title: video.title,
-            channel: video.channel,
-            artist: null,
-            playing: true,
-            volume,
-            pan: trackPan,
-            playbackMode: 'audio',
-            previewUrl: null,
-            player: null,
-          })
-
-          return adapter
-        } catch (err) {
-          lastError = err
-          playersRef.current[slotId]?.destroy?.()
-          delete playersRef.current[slotId]
         }
-      }
 
-      if (otherActive > 0 || layering) {
-        throw new Error(
-          `Could not add layered track — ${lastError?.message || 'audio stream unavailable'}`,
-        )
+        const attempts = 2
+        let lastError = null
+
+        for (let attempt = 0; attempt < attempts; attempt++) {
+          try {
+            if (attempt > 0) await delay(MOBILE_AUDIO_RETRY_MS)
+
+            const adapter = createYouTubeAudioPlayer(
+              video.videoId,
+              slotId,
+              volume,
+              {
+                onPlay: () => updateTrack(slotId, { playing: true }),
+                onPause: () => updateTrack(slotId, { playing: false }),
+                onEnded: () => updateTrack(slotId, { playing: false }),
+              },
+              trackPan,
+            )
+
+            playersRef.current[slotId] = adapter
+            await adapter.play()
+
+            updateTrack(slotId, {
+              source: 'youtube',
+              mediaId: video.videoId,
+              title: video.title,
+              channel: video.channel,
+              artist: null,
+              playing: true,
+              volume,
+              pan: trackPan,
+              playbackMode: 'audio',
+              previewUrl: null,
+              player: null,
+            })
+
+            return adapter
+          } catch (err) {
+            lastError = err
+            playersRef.current[slotId]?.destroy?.()
+            delete playersRef.current[slotId]
+          }
+        }
+
+        if (otherActive > 0 || layering) {
+          throw new Error(
+            `Could not add layered track — ${lastError?.message || 'audio stream unavailable'}`,
+          )
+        }
+
+        if (!apiReady) throw new Error('YouTube API not ready')
+        const adapter = await attachYouTubeIframe(slotId, video, volume)
+        resumeOtherYouTubeIframes(slotId)
+        return adapter
       }
 
       if (!apiReady) throw new Error('YouTube API not ready')
@@ -596,10 +603,7 @@ export function useTrackManager({ spotify }) {
                   prefersYouTubeAudioMix() ? MOBILE_PLAY_STAGGER_MS : PLAY_STAGGER_MS,
                   layeringPulseRef,
                 )
-                const usesMixedAudio = tracksRef.current.some(
-                  (t) => isSlotActive(t) && t.playbackMode === 'audio',
-                )
-                if (usesMixedAudio) {
+                if (prefersYouTubeAudioMix()) {
                   await getAudioContext()
                 } else {
                   resumeOtherYouTubeIframes()
