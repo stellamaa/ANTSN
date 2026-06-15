@@ -15,21 +15,16 @@ function getRedirectUri() {
   }
 
   const { protocol, hostname, port } = window.location
-  const host = hostname === 'localhost' ? '127.0.0.1' : hostname
-  const origin = strip(`${protocol}//${host}${port ? `:${port}` : ''}`)
+  const isLocal = hostname === 'localhost' || hostname === '127.0.0.1'
 
-  // Production (e.g. Vercel): must match the live site URL exactly
-  if (hostname.endsWith('.vercel.app')) {
+  if (isLocal) {
+    const host = hostname === 'localhost' ? '127.0.0.1' : hostname
     const envUri = strip(import.meta.env.VITE_SPOTIFY_REDIRECT_URI)
-    if (envUri && !envUri.includes('127.0.0.1') && !envUri.includes('localhost')) {
-      return envUri
-    }
-    return origin
+    return envUri || strip(`${protocol}//${host}${port ? `:${port}` : ''}`)
   }
 
-  // Local dev: use env so OAuth always sends http://127.0.0.1:5173 (not localhost/https)
-  const envUri = strip(import.meta.env.VITE_SPOTIFY_REDIRECT_URI)
-  return envUri || origin
+  // Deployed: always match the live site URL (custom domain, vercel.app, previews)
+  return strip(`${protocol}//${hostname}${port ? `:${port}` : ''}`)
 }
 
 const STORAGE = {
@@ -132,10 +127,15 @@ function storeTokens(data) {
   }
 }
 
-export async function getSpotifyToken() {
+export async function getSpotifyToken({ forceRefresh = false } = {}) {
   const version = sessionVersion
-  const cached = getStoredToken()
-  if (cached) return cached
+  if (!forceRefresh) {
+    const cached = getStoredToken()
+    if (cached) return cached
+  } else {
+    sessionStorage.removeItem(STORAGE.token)
+    sessionStorage.removeItem(STORAGE.expiry)
+  }
 
   const refresh = sessionStorage.getItem(STORAGE.refresh)
   if (!refresh || version !== sessionVersion) return null
@@ -147,9 +147,22 @@ export async function getSpotifyToken() {
   return data.access_token
 }
 
+export function invalidateAccessToken() {
+  sessionStorage.removeItem(STORAGE.token)
+  sessionStorage.removeItem(STORAGE.expiry)
+}
+
 export async function startSpotifyLogin() {
   if (!isSpotifyConfigured()) {
     throw new Error('Add VITE_SPOTIFY_CLIENT_ID to .env.local')
+  }
+
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    const port = window.location.port || '5173'
+    window.location.replace(
+      `http://127.0.0.1:${port}${window.location.pathname}${window.location.search}`,
+    )
+    return
   }
 
   const verifier = randomString(64)
