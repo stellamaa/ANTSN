@@ -8,6 +8,23 @@ function getClientId() {
   return process.env.SPOTIFY_CLIENT_ID || process.env.VITE_SPOTIFY_CLIENT_ID
 }
 
+function getBearerToken(req) {
+  const auth = req.headers.authorization || req.headers.Authorization
+  if (!auth?.startsWith('Bearer ')) return null
+  return auth.slice(7).trim()
+}
+
+function formatSpotifyError(status, errorBody) {
+  const spotifyMessage = errorBody?.error?.message
+  if (spotifyMessage) return spotifyMessage
+
+  if (status === 403) {
+    return 'Spotify denied access — disconnect, reconnect, and confirm your Spotify email is in the app User Management list'
+  }
+
+  return `Spotify search failed (${status})`
+}
+
 async function getAppAccessToken() {
   const clientId = getClientId()
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET
@@ -71,15 +88,12 @@ export default async function handler(req, res) {
     limit: String(limit),
   })
 
-  const userAuth = req.headers.authorization
-  const appAccessToken = await getAppAccessToken()
-  const token =
-    userAuth?.startsWith('Bearer ') ? userAuth.slice(7) : appAccessToken
+  const userToken = getBearerToken(req)
+  const token = userToken || (await getAppAccessToken())
 
   if (!token) {
-    return res.status(503).json({
-      error:
-        'Spotify search unavailable — add SPOTIFY_CLIENT_SECRET in Vercel env or reconnect Spotify',
+    return res.status(401).json({
+      error: 'Log in to Spotify first (disconnect and connect again if needed)',
     })
   }
 
@@ -89,12 +103,10 @@ export default async function handler(req, res) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
-    const message =
-      error?.error?.message ||
-      (response.status === 403
-        ? 'Spotify access denied — add your account in the Spotify Developer Dashboard'
-        : `Spotify search failed (${response.status})`)
-    return res.status(response.status).json({ error: message })
+    return res.status(response.status).json({
+      error: formatSpotifyError(response.status, error),
+      usedUserToken: Boolean(userToken),
+    })
   }
 
   const data = await response.json()

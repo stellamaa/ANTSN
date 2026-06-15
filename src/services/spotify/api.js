@@ -29,7 +29,7 @@ async function spotifyFetch(path, { retry = true } = {}) {
     const message =
       error?.error?.message ||
       (response.status === 403
-        ? 'Spotify access denied — add your account in the Spotify Developer Dashboard'
+        ? 'Spotify denied access — disconnect, reconnect, and confirm your Spotify email is in the app User Management list'
         : null)
     throw new Error(message || `Spotify request failed (${response.status})`)
   }
@@ -37,17 +37,34 @@ async function spotifyFetch(path, { retry = true } = {}) {
   return response
 }
 
-async function searchViaServer(query, limit) {
+async function searchViaServer(query, limit, { retry = true } = {}) {
   const params = new URLSearchParams({
     q: query,
     type: 'track',
     limit: String(limit),
   })
 
-  const token = await getSpotifyToken()
-  const headers = token ? { Authorization: `Bearer ${token}` } : {}
+  const token = await getSpotifyToken(retry ? {} : { forceRefresh: true })
+  if (!token) {
+    throw new Error('Spotify session expired — disconnect and connect again')
+  }
 
-  const response = await fetch(`/api/spotify-search?${params}`, { headers })
+  const response = await fetch(`/api/spotify-search?${params}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+
+  if (response.status === 401 && retry) {
+    invalidateAccessToken()
+    return searchViaServer(query, limit, { retry: false })
+  }
+
+  if (response.status === 403 && retry) {
+    invalidateAccessToken()
+    const refreshed = await getSpotifyToken({ forceRefresh: true })
+    if (refreshed) {
+      return searchViaServer(query, limit, { retry: false })
+    }
+  }
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}))
