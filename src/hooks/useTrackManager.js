@@ -244,8 +244,6 @@ export function useTrackManager({ spotify }) {
           try {
             if (attempt > 0) await delay(MOBILE_AUDIO_RETRY_MS)
 
-            await getAudioContext()
-
             const adapter = createYouTubeAudioPlayer(video.videoId, slotId, volume, {
               onPlay: () => updateTrack(slotId, { playing: true }),
               onPause: () => updateTrack(slotId, { playing: false }),

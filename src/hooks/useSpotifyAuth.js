@@ -7,7 +7,7 @@ import {
   logoutSpotify,
   startSpotifyLogin,
 } from '../services/spotify/auth'
-import { initSpotifyPlayer, isSpotifyPlaybackSupported } from '../services/spotify/playback'
+import { initSpotifyPlayer, isSpotifyPlaybackSupported, destroySpotifyPlayer } from '../services/spotify/playback'
 
 export function useSpotifyAuth() {
   const [isConfigured] = useState(isSpotifyConfigured)
@@ -97,6 +97,7 @@ export function useSpotifyAuth() {
 
   const logout = useCallback(async () => {
     await logoutSpotify()
+    destroySpotifyPlayer()
     setIsAuthenticated(false)
     setIsPlayerReady(false)
     setPlayerError(null)
