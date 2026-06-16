@@ -291,18 +291,18 @@ export function useTrackManager({ spotify }) {
           )
         }
 
-        if (!apiReady) throw new Error('YouTube API not ready')
+        await loadYouTubeAPI()
         const adapter = await attachYouTubeIframe(slotId, video, volume)
         resumeOtherYouTubeIframes(slotId)
         return adapter
       }
 
-      if (!apiReady) throw new Error('YouTube API not ready')
+      await loadYouTubeAPI()
       const adapter = await attachYouTubeIframe(slotId, video, volume)
       resumeOtherYouTubeIframes(slotId)
       return adapter
     },
-    [apiReady, attachYouTubeIframe, destroyPlayer, resumeOtherYouTubeIframes, updateTrack],
+    [attachYouTubeIframe, destroyPlayer, resumeOtherYouTubeIframes, updateTrack],
   )
 
   const attachSpotify = useCallback(
