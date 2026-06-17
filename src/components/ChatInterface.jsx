@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition'
+import { hapticListeningStart, hapticListeningStop } from '../utils/haptics'
 
 function MicIcon({ active }) {
   return (
@@ -41,6 +42,7 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
 
   const handleFinalSpeech = useCallback(
     (text) => {
+      hapticListeningStop()
       submitText(text)
     },
     [submitText],
@@ -144,7 +146,11 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
             {supported && (
               <button
                 type="button"
-                onClick={toggle}
+                onClick={() => {
+                  if (listening) hapticListeningStop()
+                  else hapticListeningStart()
+                  toggle()
+                }}
                 disabled={isLoading}
                 aria-label={listening ? 'Stop listening' : 'Speak prompt'}
                 aria-pressed={listening}

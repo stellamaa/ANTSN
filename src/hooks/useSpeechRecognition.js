@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { loadYouTubeAPI } from '../services/youtube'
-import { hapticListeningStart, hapticListeningStop } from '../utils/haptics'
 
 function getSpeechRecognition() {
   if (typeof window === 'undefined') return null
@@ -42,10 +41,7 @@ export function useSpeechRecognition({ onFinal, onInterim, disabled = false, lan
     recognition.interimResults = true
     recognition.maxAlternatives = 1
 
-    recognition.onstart = () => {
-      setListening(true)
-      hapticListeningStart()
-    }
+    recognition.onstart = () => setListening(true)
 
     recognition.onresult = (event) => {
       let interim = ''
@@ -72,7 +68,6 @@ export function useSpeechRecognition({ onFinal, onInterim, disabled = false, lan
 
     recognition.onend = () => {
       setListening(false)
-      hapticListeningStop()
       const text = transcriptRef.current.trim()
       transcriptRef.current = ''
       if (text) onFinal?.(text)

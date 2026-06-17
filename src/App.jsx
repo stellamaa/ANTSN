@@ -13,13 +13,13 @@ function createMessage(role, text) {
   return { id: ++messageId, role, text }
 }
 
+const WELCOME_MESSAGE = createMessage(
+  'assistant',
+  'prompt me. try "play rain on youtube" or "play lofi beats on spotify". connect spotify first for spotify tracks.',
+)
+
 export default function App() {
-  const [messages, setMessages] = useState([
-    createMessage(
-      'assistant',
-      'prompt me. try "play rain on youtube" or "play lofi beats on spotify". connect spotify first for spotify tracks.',
-    ),
-  ])
+  const [messages, setMessages] = useState([WELCOME_MESSAGE])
   const [isLoading, setIsLoading] = useState(false)
 
   const spotify = useSpotifyAuth()
@@ -31,8 +31,14 @@ export default function App() {
     setTrackVolume,
     setTrackPan,
     toggleTrack,
+    stopAll,
     executeActions,
   } = useTrackManager({ spotify })
+
+  const clearSession = useCallback(() => {
+    stopAll()
+    setMessages([])
+  }, [stopAll])
 
   const handleVolumeChange = useCallback(
     (trackIndex, volume) => {
@@ -84,6 +90,10 @@ export default function App() {
           const results = await executeActions(response.actions)
           const failures = results.filter((r) => !r.ok)
 
+          if (results.some((r) => r.ok && r.action?.type === 'stop_all')) {
+            clearSession()
+          }
+
           if (failures.length) {
             addMessage(
               'error',
@@ -97,7 +107,7 @@ export default function App() {
         setIsLoading(false)
       }
     },
-    [addMessage, executeActions, spotify.isAuthenticated, tracks],
+    [addMessage, clearSession, executeActions, spotify.isAuthenticated, tracks],
   )
 
   return (

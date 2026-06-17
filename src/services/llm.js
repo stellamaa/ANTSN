@@ -32,10 +32,12 @@ Rules:
 - spotify requires user to be logged in — if not connected, say so in message
 - one full-length spotify track at a time (premium); additional simultaneous spotify layers use 30s previews (marked sp· in ui)
 - set "full": true on play action when user wants a full spotify song and no other full spotify track is playing
+- when layering spotify with other tracks (youtube or more spotify), always set "full": false on spotify play actions
 - combine multiple actions when needed (e.g. play rain on youtube + piano on spotify)
 - when user asks for two or more sounds at once, return multiple "play" actions in the actions array
 - if user asks to fade out before a song ends, use fade_out_before_end
 - if only one track is playing and user says "turn it up" without a number, use that track's slot
+- stop_all stops every track and clears the chat history
 - keep message terse and calm`
 
 export async function queryLLM(userMessage, tracksContext, options = {}) {
@@ -208,7 +210,7 @@ function fallbackParser(message, tracks, options = {}) {
     actions.push({ type: 'resume', track: Number(resumeMatch[1]) })
   }
 
-  if (lower.includes('stop all')) {
+  if (lower.includes('stop all') || lower.includes('clear session') || lower.includes('clear chat')) {
     actions.push({ type: 'stop_all' })
   }
 

@@ -306,7 +306,7 @@ export function useTrackManager({ spotify }) {
   )
 
   const attachSpotify = useCallback(
-    async (slotId, track, volume = 0.7, preferFull = false) => {
+    async (slotId, track, volume = 0.7, preferFull = false, { layering = false } = {}) => {
       if (!spotify?.isAuthenticated) {
         throw new Error('Log in to Spotify first')
       }
@@ -315,9 +315,14 @@ export function useTrackManager({ spotify }) {
       if (isSlotActive(slot)) destroyPlayer(slot)
 
       const trackPan = slot?.pan ?? 0
+      const otherActive = tracksRef.current.filter(
+        (t) => isSlotActive(t) && t.id !== slotId,
+      ).length
+      const needsPreview = layering || otherActive > 0
 
       const sdkSlot = getSpotifySdkSlot()
       const canUseFull =
+        !needsPreview &&
         preferFull &&
         spotify.isPlayerReady &&
         (sdkSlot === null || sdkSlot === slotId)
@@ -334,12 +339,18 @@ export function useTrackManager({ spotify }) {
           pan: trackPan,
         })
         await adapter.play()
-      } else if (spotify.isPlayerReady && sdkSlot === null) {
+      } else if (
+        !needsPreview &&
+        spotify.isPlayerReady &&
+        sdkSlot === null
+      ) {
         adapter = await playSpotifyFull(slotId, track, volume)
         playbackMode = 'full'
       } else {
         throw new Error(
-          `"${track.title}" has no preview — try another track or stop a full spotify track first`,
+          needsPreview
+            ? `"${track.title}" has no preview for layering — try another track`
+            : `"${track.title}" has no preview — try another track or stop a full spotify track first`,
         )
       }
 
@@ -375,10 +386,11 @@ export function useTrackManager({ spotify }) {
 
       if (source === 'spotify') {
         const results = await searchSpotify(query, 5)
-        const track =
-          results.find((r) => (preferFull ? true : r.previewUrl)) || results[0]
+        const track = layering
+          ? results.find((r) => r.previewUrl) || results[0]
+          : results.find((r) => (preferFull ? true : r.previewUrl)) || results[0]
         if (!track) throw new Error(`No Spotify results for "${query}"`)
-        return attachSpotify(slotId, track, volume, preferFull)
+        return attachSpotify(slotId, track, volume, preferFull, { layering })
       }
 
       const results = await searchYouTube(`${query} -live`, 5)
@@ -583,15 +595,16 @@ export function useTrackManager({ spotify }) {
         try {
           switch (action.type) {
             case 'play': {
+              if (multiPlay && prefersYouTubeAudioMix()) {
+                await getAudioContext()
+              }
+
               const played = await playQuery(
                 action.query,
                 action.volume ?? 0.7,
                 action.source ?? 'youtube',
                 action.full ?? false,
-                {
-                  layering:
-                    multiPlay && (action.source ?? 'youtube') === 'youtube',
-                },
+                { layering: multiPlay },
               )
               results.push({ ok: true, action, played })
 
