@@ -1,11 +1,37 @@
-let tickContext = null
+function isTouchDevice() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+  return window.matchMedia('(pointer: coarse)').matches
+}
 
-function canVibrate() {
-  return typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'
+/**
+ * iOS Safari 17.4+ — toggling `<input type="checkbox" switch>` fires the Taptic Engine.
+ * No public haptics API exists on iOS web; this is the standard workaround.
+ */
+function iosSwitchPulse() {
+  if (typeof document === 'undefined') return false
+
+  try {
+    const label = document.createElement('label')
+    label.setAttribute('aria-hidden', 'true')
+    label.style.cssText =
+      'position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none'
+
+    const input = document.createElement('input')
+    input.type = 'checkbox'
+    input.setAttribute('switch', '')
+    label.appendChild(input)
+
+    document.body.appendChild(label)
+    label.click()
+    document.body.removeChild(label)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function vibrate(pattern) {
-  if (!canVibrate()) return false
+  if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return false
   try {
     navigator.vibrate(pattern)
     return true
@@ -14,35 +40,25 @@ function vibrate(pattern) {
   }
 }
 
-/** iOS Safari has no Vibration API — tiny inaudible pulse via Web Audio instead. */
-async function audioTick({ frequency = 160, duration = 0.022, gain = 0.035 } = {}) {
-  if (typeof window === 'undefined') return
-
-  try {
-    const ctx = tickContext || new AudioContext()
-    tickContext = ctx
-    if (ctx.state === 'suspended') await ctx.resume()
-
-    const osc = ctx.createOscillator()
-    const amp = ctx.createGain()
-    osc.type = 'sine'
-    osc.frequency.value = frequency
-    amp.gain.value = gain
-    osc.connect(amp)
-    amp.connect(ctx.destination)
-    osc.start()
-    osc.stop(ctx.currentTime + duration)
-  } catch {
-    /* ignored */
-  }
+function pulse() {
+  if (vibrate(45)) return
+  if (isTouchDevice()) iosSwitchPulse()
 }
 
-/** Call synchronously from a user gesture (tap). */
+function doublePulse() {
+  if (vibrate([35, 55, 35])) return
+  if (!isTouchDevice()) return
+
+  iosSwitchPulse()
+  window.setTimeout(iosSwitchPulse, 110)
+}
+
+/** Call synchronously from pointerdown / click (user gesture required). */
 export function hapticListeningStart() {
-  if (!vibrate(16)) audioTick({ frequency: 180, duration: 0.02 })
+  pulse()
 }
 
-/** Call synchronously from a user gesture when possible. */
+/** Call synchronously from pointerdown / click when possible. */
 export function hapticListeningStop() {
-  if (!vibrate([12, 40, 12])) audioTick({ frequency: 120, duration: 0.028, gain: 0.03 })
+  doublePulse()
 }

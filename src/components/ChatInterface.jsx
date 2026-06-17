@@ -146,14 +146,19 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
             {supported && (
               <button
                 type="button"
-                onClick={() => {
+                onPointerDown={() => {
+                  if (isLoading) return
                   if (listening) hapticListeningStop()
                   else hapticListeningStart()
+                }}
+                onClick={() => {
+                  if (isLoading) return
                   toggle()
                 }}
                 disabled={isLoading}
                 aria-label={listening ? 'Stop listening' : 'Speak prompt'}
                 aria-pressed={listening}
+                style={{ touchAction: 'manipulation' }}
                 className={`shrink-0 mb-0.5 w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center border transition-colors ${
                   listening
                     ? 'border-antsn-white/70 text-antsn-white animate-pulse'
