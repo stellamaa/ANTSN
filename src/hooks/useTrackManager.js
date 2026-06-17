@@ -13,7 +13,8 @@ import {
   YT_STATE,
 } from '../services/youtube'
 import { createMixedAudioPlayer } from '../services/mixedAudio'
-import { getAudioContext } from '../services/audioMixer'
+import { getAudioContext, resumeAudioContext } from '../services/audioMixer'
+import { resolveMixerAudioUrl } from '../utils/audioUrl'
 import { prefersYouTubeAudioMix } from '../utils/device'
 import { fadeVolume } from '../utils/fade'
 import { MAX_TRACKS } from '../utils/helpers'
@@ -258,6 +259,7 @@ export function useTrackManager({ spotify }) {
                 onEnded: () => updateTrack(slotId, { playing: false }),
               },
               trackPan,
+              { requireMixer: layering || otherActive > 0 },
             )
 
             playersRef.current[slotId] = adapter
@@ -334,10 +336,14 @@ export function useTrackManager({ spotify }) {
         adapter = await playSpotifyFull(slotId, track, volume)
         playbackMode = 'full'
       } else if (track.previewUrl) {
-        adapter = createMixedAudioPlayer(track.previewUrl, slotId, volume, {}, {
-          loop: true,
-          pan: trackPan,
-        })
+        await resumeAudioContext()
+        adapter = createMixedAudioPlayer(
+          resolveMixerAudioUrl(track.previewUrl),
+          slotId,
+          volume,
+          {},
+          { loop: true, pan: trackPan },
+        )
         await adapter.play()
       } else if (
         !needsPreview &&
@@ -385,16 +391,22 @@ export function useTrackManager({ spotify }) {
       const slotId = findSlot()
 
       if (source === 'spotify') {
-        const results = await searchSpotify(query, 5)
+        const results = await searchSpotify(query, layering ? 15 : 5)
         const track = layering
-          ? results.find((r) => r.previewUrl) || results[0]
+          ? results.find((r) => r.previewUrl)
           : results.find((r) => (preferFull ? true : r.previewUrl)) || results[0]
         if (!track) throw new Error(`No Spotify results for "${query}"`)
+        if (layering && !track.previewUrl) {
+          throw new Error(`No Spotify preview available for layering — try another track`)
+        }
         return attachSpotify(slotId, track, volume, preferFull, { layering })
       }
 
-      const results = await searchYouTube(`${query} -live`, 5)
+      const results = layering
+        ? await searchYouTube(query, 5)
+        : await searchYouTube(`${query} -live`, 5)
       if (!results.length) {
+        if (layering) throw new Error(`No YouTube results for "${query}"`)
         const fallback = await searchYouTube(query, 5)
         if (!fallback.length) throw new Error(`No YouTube results for "${query}"`)
         await attachYouTube(slotId, fallback[0], volume, { layering })
@@ -595,8 +607,8 @@ export function useTrackManager({ spotify }) {
         try {
           switch (action.type) {
             case 'play': {
-              if (multiPlay && prefersYouTubeAudioMix()) {
-                await getAudioContext()
+              if (prefersYouTubeAudioMix()) {
+                await resumeAudioContext()
               }
 
               const played = await playQuery(

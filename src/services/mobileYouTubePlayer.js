@@ -76,6 +76,7 @@ export function createMobileYouTubePlayer(
   volume = 0.7,
   callbacks = {},
   pan = 0,
+  { requireMixer = false } = {},
 ) {
   const video = document.createElement('video')
   video.preload = 'auto'
@@ -133,8 +134,9 @@ export function createMobileYouTubePlayer(
 
       try {
         await playMixed()
-      } catch {
+      } catch (err) {
         detachFromMixer(slotId)
+        if (requireMixer) throw err
         await playNative()
       }
     },

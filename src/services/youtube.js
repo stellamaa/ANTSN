@@ -75,9 +75,12 @@ export function createYouTubeAudioPlayer(
   volume = 0.7,
   callbacks = {},
   pan = 0,
+  { requireMixer = false } = {},
 ) {
   if (prefersYouTubeAudioMix()) {
-    return createMobileYouTubePlayer(videoId, slotId, volume, callbacks, pan)
+    return createMobileYouTubePlayer(videoId, slotId, volume, callbacks, pan, {
+      requireMixer,
+    })
   }
   return createMixedAudioPlayer(
     getYouTubeAudioStreamSrc(videoId),

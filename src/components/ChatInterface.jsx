@@ -58,6 +58,12 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
     disabled: isLoading,
   })
 
+  const handleMicHaptic = useCallback(() => {
+    if (isLoading) return
+    if (listening) hapticListeningStop()
+    else hapticListeningStart()
+  }, [isLoading, listening])
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
@@ -146,13 +152,10 @@ export default function ChatInterface({ messages, onSubmit, isLoading }) {
             {supported && (
               <button
                 type="button"
-                onPointerDown={() => {
-                  if (isLoading) return
-                  if (listening) hapticListeningStop()
-                  else hapticListeningStart()
-                }}
+                onTouchStart={handleMicHaptic}
                 onClick={() => {
                   if (isLoading) return
+                  if (!('ontouchstart' in window)) handleMicHaptic()
                   toggle()
                 }}
                 disabled={isLoading}
